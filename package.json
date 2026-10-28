@@ -1,18 +1,19 @@
 {
-  "name": "iauto-pecas-backend",
+  "name": "tech-pecas-ia-backend",
   "version": "1.0.0",
-  "description": "Backend para IAuto Peças - API REST com MySQL",
+  "description": "Backend do protótipo Tech Peças IA - Node.js, Express, MySQL e Gemini",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
   "keywords": [
-    "iauto",
-    "peças",
-    "api",
+    "tech-pecas-ia",
+    "autopecas",
+    "ia",
     "express",
-    "mysql"
+    "mysql",
+    "gemini"
   ],
   "author": "",
   "license": "ISC",
