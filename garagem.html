@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minha garagem | Tech Peças IA</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="modal.js"></script>
+</head>
+<body class="buscar-body">
+  <a href="index.html" class="btn-back-top" title="Voltar para home">← Voltar</a>
+
+  <div id="garageLoginRequired" class="login-required" style="display:none;">
+    <div class="login-required-card">
+      <div class="login-lock">🔐</div>
+      <h1>Sua garagem é privada</h1>
+      <p>Faça login para salvar e reutilizar os dados dos seus veículos.</p>
+      <div class="login-required-actions">
+        <button onclick="window.location.href='login.html'" class="btn-primary">Fazer Login</button>
+        <button onclick="window.location.href='index.html'" class="btn-outline-light">Voltar</button>
+      </div>
+    </div>
+  </div>
+
+  <main id="garageContent" class="search-page" style="display:none;">
+    <section class="search-hero garage-hero">
+      <div>
+        <span class="eyebrow">MINHA GARAGEM</span>
+        <h1>Salve seus veículos e pesquise mais rápido</h1>
+        <p>Depois de salvar um carro, você pode reutilizar marca, modelo, ano e versão automaticamente na análise por IA e na busca de peças.</p>
+      </div>
+      <div id="garageUserArea"></div>
+    </section>
+
+    <section class="garage-shell">
+      <div class="garage-form-card">
+        <div class="panel-heading">
+          <h2>Adicionar veículo</h2>
+          <p>Cadastre um carro para não precisar preencher os mesmos dados em toda pesquisa.</p>
+        </div>
+
+        <form id="garageForm" class="tech-form">
+          <div class="form-grid vehicle-grid">
+            <label>Marca
+              <input type="text" id="garageMarca" placeholder="Ex: Chevrolet" required>
+            </label>
+            <label>Modelo
+              <input type="text" id="garageModelo" placeholder="Ex: Onix" required>
+            </label>
+            <label>Ano
+              <input type="number" id="garageAno" min="1950" max="2100" placeholder="2022" required>
+            </label>
+            <label>Versão <span>(opcional)</span>
+              <input type="text" id="garageVersao" placeholder="Ex: LT 1.0 Turbo">
+            </label>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-primary action-button">Salvar na garagem</button>
+            <a href="buscar.html" class="btn-secondary garage-search-link">Ir para busca</a>
+          </div>
+        </form>
+      </div>
+
+      <div class="garage-list-card">
+        <div class="history-head">
+          <div>
+            <span class="eyebrow dark">VEÍCULOS SALVOS</span>
+            <h2>Sua garagem</h2>
+          </div>
+        </div>
+        <div id="garageList" class="garage-grid"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
