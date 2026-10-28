@@ -66,7 +66,7 @@ function sleep(ms) {
 
 function getGeminiStatus(error) {
   const directStatus = Number(error?.status || error?.response?.status || error?.statusCode);
-  if (Number.isFinite(directStatus) && directStatus > 0) return directStatus.
+  if (Number.isFinite(directStatus) && directStatus > 0) return directStatus;
 
   const message = String(error?.message || error || '');
   const match = message.match(/\[(\d{3})\s/);
