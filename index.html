@@ -3,56 +3,57 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>IAuto Peças</title>
+  <title>Tech Peças IA</title>
   <link rel="stylesheet" href="style.css" />
   <script src="modal.js"></script>
 </head>
 <body>
   <header class="navbar">
-    <div class="logo">🚗 IAuto Peças</div>
+    <div class="logo">🚗 Tech Peças IA</div>
     <nav>
       <a href="index.html" class="active">Início</a>
-      <div id="navAuth" style="display: flex; gap: 1rem; align-items: center;">
+      <a href="buscar.html">Buscar peças</a>
+      <div id="navAuth" style="display:flex;gap:1rem;align-items:center;">
         <a href="login.html" id="nav-login">Fazer Login</a>
       </div>
     </nav>
   </header>
 
-  <section class="hero">
+  <section class="hero tech-hero">
     <div class="hero-text">
-      <h1>Peça certa, <br> na hora certa</h1>
-      <p>Encontre a peça perfeita para o seu carro com nossa IA inteligente.</p>
-      <a href="buscar.html" class="btn-primary" id="btnBuscar">Buscar Peças</a>
+      <span class="hero-kicker">AUTOPEÇAS + INTELIGÊNCIA ARTIFICIAL</span>
+      <h1>Entenda o problema.<br>Encontre a peça certa.</h1>
+      <p>Informe seu veículo e explique o que está acontecendo, ou pesquise diretamente pela peça. O Tech Peças IA ajuda a organizar as opções para você decidir melhor.</p>
+      <a href="buscar.html" class="btn-primary" id="btnBuscar">Começar busca</a>
     </div>
-    <div class="hero-img">
-      <img src="https://cdn-icons-png.flaticon.com/512/7435/7435975.png" alt="Carro e chaves">
+    <div class="hero-tech-card" aria-label="Fluxo da plataforma">
+      <div class="flow-step"><span>1</span><div><strong>Seu veículo</strong><small>Marca, modelo, ano e versão</small></div></div>
+      <div class="flow-line"></div>
+      <div class="flow-step"><span>2</span><div><strong>Problema ou peça</strong><small>Explique o sintoma ou faça uma busca direta</small></div></div>
+      <div class="flow-line"></div>
+      <div class="flow-step"><span>3</span><div><strong>IA + catálogo</strong><small>Componentes relacionados e opções compatíveis</small></div></div>
     </div>
   </section>
 
-  <section id="sobre" class="sobre">
-    <h2>Quem somos nós?</h2>
-    <p>
-      A IAuto Peças é uma loja online e física especializada na venda de autopeças.
-      Usamos inteligência artificial para facilitar sua escolha:
-    </p>
+  <section class="sobre">
+    <span class="eyebrow dark">COMO FUNCIONA</span>
+    <h2>Do problema à peça, em um só lugar</h2>
+    <p>O projeto foi pensado para simplificar a pesquisa de autopeças, principalmente para quem não domina termos de mecânica.</p>
     <div class="cards">
-      <div class="card">🔍 Identifica a peça compatível</div>
-      <div class="card">💰 Sugere alternativas mais baratas</div>
-      <div class="card">📦 Mostra estoque em tempo real</div>
-      <div class="card">🚚 Prevê a entrega</div>
+      <div class="card">🤖 IA auxilia na triagem do problema</div>
+      <div class="card">🚘 Filtra peças pelo veículo</div>
+      <div class="card">💰 Compara opções e preços cadastrados</div>
+      <div class="card">🛒 Compra no site ou acesso a parceiro</div>
     </div>
   </section>
 
   <section class="clientes">
-    <h2>Para quem são nossos produtos e serviços</h2>
-    <p>
-      Mecânicos, donos de oficinas e qualquer pessoa que precise de peças automotivas.
-    </p>
-    <img src="https://cdn-icons-png.flaticon.com/512/3275/3275464.png" alt="Mecânico">
+    <h2>Uma plataforma simples para quem precisa de autopeças</h2>
+    <p>Você pode chegar sabendo exatamente a peça que quer ou apenas descrever o problema do carro. A plataforma organiza o caminho a partir daí.</p>
   </section>
 
   <footer>
-    <p>© 2025 IAuto Peças — Todos os direitos reservados</p>
+    <p>© 2026 Tech Peças IA — Protótipo acadêmico</p>
   </footer>
 
   <script src="script.js"></script>
