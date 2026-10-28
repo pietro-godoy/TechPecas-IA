@@ -20,7 +20,8 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 5,
   queueLimit: 0,
-  enableKeepAlive: true
+  enableKeepAlive: true,
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined
 });
 
 pool.getConnection()
