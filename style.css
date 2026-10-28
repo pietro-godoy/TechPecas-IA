@@ -1663,3 +1663,136 @@ footer {
   .offer-row a { grid-column:1 / -1; }
   .search-hero { padding-left:1rem; padding-right:1rem; }
 }
+
+
+/* ===== TECH PECAS IA - GARAGEM ===== */
+.garage-hero {
+  min-height: 320px;
+}
+
+.garage-shell {
+  width: min(1160px, calc(100% - 2rem));
+  margin: -48px auto 0;
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 1.5rem;
+  padding-bottom: 4rem;
+}
+
+.garage-form-card,
+.garage-list-card {
+  background: #fff;
+  border-radius: 24px;
+  padding: 2rem;
+  box-shadow: 0 15px 45px rgba(11,37,65,.09);
+}
+
+.garage-search-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.garage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 1rem;
+}
+
+.garage-card {
+  border: 1px solid #e2e8ef;
+  border-radius: 18px;
+  padding: 1.2rem;
+  background: linear-gradient(180deg,#fff,#fbfcfd);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
+  align-items: start;
+  box-shadow: 0 8px 22px rgba(11,37,65,.05);
+}
+
+.garage-card-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: #eaf0f6;
+  font-size: 1.4rem;
+}
+
+.garage-card-body h3 {
+  color: var(--azul);
+  margin: .25rem 0;
+}
+
+.garage-card-body p {
+  color: #6f7d8e;
+  font-size: .88rem;
+}
+
+.garage-card-year {
+  color: var(--vermelho);
+  font-size: .75rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.garage-card-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: .6rem;
+  flex-wrap: wrap;
+  padding-top: .4rem;
+}
+
+.garage-delete {
+  border: 0;
+  background: #fff0f1;
+  color: #b32735;
+  border-radius: 10px;
+  padding: .65rem .9rem;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.garage-empty {
+  grid-column: 1 / -1;
+  color: #7f8b99;
+  text-align: center;
+  padding: 2rem 1rem;
+  border: 1px dashed #d8e0e8;
+  border-radius: 16px;
+}
+
+.garage-pill-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: .65rem;
+  padding: .58rem .9rem;
+  border-radius: 50px;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 800;
+  background: rgba(255,255,255,.13);
+  border: 1px solid rgba(255,255,255,.2);
+}
+
+@media (max-width: 640px) {
+  .garage-form-card,
+  .garage-list-card {
+    padding: 1.3rem;
+  }
+
+  .garage-card-actions {
+    flex-direction: column;
+  }
+
+  .garage-card-actions button,
+  .garage-card-actions a {
+    width: 100%;
+    justify-content: center;
+  }
+}
