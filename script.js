@@ -3,7 +3,7 @@ const API_BASE_URL = window.API_CONFIG?.API_BASE_URL ||
     ? `http://${window.location.hostname}:3000/api`
     : `${window.location.protocol}//${window.location.hostname}/api`);
 
-const USER_KEY = "iauto_user";
+const USER_KEY = "techpecas_user";
 
 function getCurrentUser() {
   const raw = localStorage.getItem(USER_KEY);
@@ -608,3 +608,251 @@ function exibirPecas(pecas, carroNome) {
 function adicionarAoCarrinho(id, nome) {
   showSuccess(`${nome} adicionado ao carrinho!`, 'Sucesso');
 }
+
+
+/* ===== TECH PECAS IA - FLUXO NOVO ===== */
+function tpEscape(value) {
+  return String(value == null ? '' : value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function tpMoney(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const number = Number(value);
+  if (Number.isNaN(number)) return '—';
+  return number.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function tpLoading(visible, message) {
+  const box = document.getElementById('loadingSpinner');
+  if (!box) return;
+  const p = box.querySelector('p');
+  if (p && message) p.textContent = message;
+  box.style.display = visible ? 'flex' : 'none';
+}
+
+function tpShowResult(html) {
+  const area = document.getElementById('resultadoArea');
+  if (!area) return;
+  area.innerHTML = html;
+  area.style.display = 'block';
+  area.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function tpRenderDiagnosis(result) {
+  const analysis = result.analise || {};
+  const vehicle = result.veiculo || {};
+  const components = Array.isArray(analysis.componentes) ? analysis.componentes : [];
+
+  const cards = components.map(function(item, index) {
+    const term = Array.isArray(item.termos_busca) && item.termos_busca.length
+      ? item.termos_busca[0]
+      : (item.nome || '');
+    return '<article class="diagnostic-card">' +
+      '<div class="diagnostic-number">' + (index + 1) + '</div>' +
+      '<div><h3>' + tpEscape(item.nome || 'Componente') + '</h3>' +
+      '<p>' + tpEscape(item.motivo || 'Pode estar relacionado ao sintoma informado.') + '</p>' +
+      '<button class="link-button tp-suggested-part" type="button" data-term="' + tpEscape(term) + '">Pesquisar esta peça →</button></div>' +
+      '</article>';
+  }).join('');
+
+  tpShowResult(
+    '<div class="result-header">' +
+      '<span class="eyebrow dark">ANÁLISE ASSISTIDA</span>' +
+      '<h2>' + tpEscape(vehicle.marca || '') + ' ' + tpEscape(vehicle.modelo || '') + ' ' + tpEscape(vehicle.ano || '') + ' ' + tpEscape(vehicle.versao || '') + '</h2>' +
+      '<p>' + tpEscape(analysis.resumo || 'Veja os componentes que podem estar relacionados ao problema informado.') + '</p>' +
+    '</div>' +
+    '<div class="safety-note"><strong>Importante:</strong> ' +
+      tpEscape(analysis.orientacao || 'Confirme a causa do problema com um profissional antes de substituir componentes.') +
+    '</div>' +
+    '<div class="diagnostic-list">' + (cards || '<p>Nenhum componente foi sugerido.</p>') + '</div>'
+  );
+}
+
+function tpRenderParts(result) {
+  const pieces = Array.isArray(result.pecas) ? result.pecas : [];
+  if (!pieces.length) {
+    tpShowResult(
+      '<div class="empty-result"><div>🔎</div><h2>Nenhuma peça cadastrada encontrada</h2>' +
+      '<p>O mecanismo de busca está pronto, mas o catálogo ainda precisa receber produtos e compatibilidades para mostrar mais resultados.</p></div>'
+    );
+    return;
+  }
+
+  const cards = pieces.map(function(piece, index) {
+    const sitePrice = piece.preco_site !== null ? tpMoney(piece.preco_site) : 'Consultar';
+    const partnerPrice = piece.menor_preco_parceiro !== null ? tpMoney(piece.menor_preco_parceiro) : 'Sem oferta externa';
+    const stock = Number(piece.estoque) || 0;
+
+    return '<article class="part-card">' +
+      '<div class="part-card-top"><span class="part-rank">#' + (index + 1) + '</span>' +
+      '<span class="stock-chip ' + (stock > 0 ? 'available' : '') + '">' +
+      (stock > 0 ? stock + ' em estoque' : 'Sem estoque no site') + '</span></div>' +
+      '<h3>' + tpEscape(piece.nome || '') + '</h3>' +
+      '<p class="part-meta">' + tpEscape(piece.fabricante || 'Fabricante não informado') + ' · ' + tpEscape(piece.categoria || 'Autopeça') + '</p>' +
+      '<p class="part-description">' + tpEscape(piece.descricao || 'Sem descrição cadastrada.') + '</p>' +
+      '<div class="price-compare"><div><small>Tech Peças IA</small><strong>' + sitePrice + '</strong></div>' +
+      '<div><small>Melhor parceiro</small><strong>' + partnerPrice + '</strong></div></div>' +
+      '<div class="part-actions">' +
+      (piece.preco_site !== null && stock > 0 ? '<button class="btn-primary small-button" type="button" onclick="showInfo(\'O carrinho será implementado no próximo marco do protótipo.\', \'Compra no site\')">Comprar no site</button>' : '') +
+      '<button class="btn-secondary small-button tp-offers" type="button" data-piece-id="' + Number(piece.id) + '">Ver ofertas (' + Number(piece.total_ofertas || 0) + ')</button>' +
+      '</div><div id="offers-' + Number(piece.id) + '" class="offers-list"></div></article>';
+  }).join('');
+
+  const filterText = result.filtros
+    ? 'Filtrado para ' + tpEscape(result.filtros.marca) + ' ' + tpEscape(result.filtros.modelo) + ' ' + tpEscape(result.filtros.ano) + '.'
+    : 'Resultados ordenados priorizando estoque e menor preço cadastrado.';
+
+  tpShowResult(
+    '<div class="result-header"><span class="eyebrow dark">CATÁLOGO</span>' +
+    '<h2>Resultados para “' + tpEscape(result.termo || '') + '”</h2><p>' + filterText + '</p></div>' +
+    '<div class="part-grid">' + cards + '</div>'
+  );
+}
+
+async function tpLoadOffers(pieceId) {
+  const container = document.getElementById('offers-' + pieceId);
+  if (!container) return;
+  container.innerHTML = '<span class="muted-text">Carregando ofertas...</span>';
+
+  const result = await apiCall('/pecas/' + pieceId + '/ofertas');
+  if (!result.ok || !result.ofertas || !result.ofertas.length) {
+    container.innerHTML = '<span class="muted-text">Nenhuma oferta de parceiro cadastrada para esta peça.</span>';
+    return;
+  }
+
+  container.innerHTML = result.ofertas.map(function(offer) {
+    const link = /^https?:\/\//i.test(offer.link_compra || '') ? offer.link_compra : '';
+    return '<div class="offer-row"><div><strong>' + tpEscape(offer.fornecedor || '') + '</strong>' +
+      '<small>Atualizado em ' + new Date(offer.atualizado_em).toLocaleDateString('pt-BR') + '</small></div>' +
+      '<div class="offer-price">' + tpMoney(offer.preco) + '</div>' +
+      (link ? '<a href="' + tpEscape(link) + '" target="_blank" rel="noopener noreferrer">Ir para parceiro</a>' : '<span class="muted-text">Sem link</span>') +
+      '</div>';
+  }).join('');
+}
+
+async function tpRenderHistory() {
+  const list = document.getElementById('historyList');
+  if (!list) return;
+  const history = await getSearchHistory();
+
+  if (!history.length) {
+    list.innerHTML = '<li class="history-empty">Nenhuma pesquisa salva ainda.</li>';
+    return;
+  }
+
+  list.innerHTML = history.map(function(item) {
+    const label = item.tipo === 'problema' ? '🤖 Problema' : (item.tipo === 'peca' ? '🔎 Peça' : '🔍 Busca');
+    return '<li><span class="history-type">' + label + '</span>' +
+      '<span class="history-term">' + tpEscape(item.termo || '') + '</span>' +
+      '<time>' + new Date(item.data_busca).toLocaleString('pt-BR') + '</time></li>';
+  }).join('');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const diagForm = document.getElementById('diagnosticoForm');
+  const partForm = document.getElementById('pecaForm');
+  if (!diagForm && !partForm) return;
+
+  const modeButtons = document.querySelectorAll('.search-mode');
+  modeButtons.forEach(function(button) {
+    button.addEventListener('click', function() {
+      modeButtons.forEach(function(b) { b.classList.remove('active'); });
+      document.querySelectorAll('.mode-panel').forEach(function(panel) { panel.classList.remove('active'); });
+      button.classList.add('active');
+      const target = button.dataset.mode === 'peca' ? document.getElementById('modePeca') : document.getElementById('modeProblema');
+      if (target) target.classList.add('active');
+    });
+  });
+
+  const filter = document.getElementById('usarFiltroVeiculo');
+  if (filter) {
+    filter.addEventListener('change', function() {
+      const fields = document.getElementById('pecaVehicleFields');
+      if (fields) fields.style.display = filter.checked ? 'grid' : 'none';
+    });
+  }
+
+  if (diagForm) {
+    diagForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      const user = getCurrentUser();
+      if (!user) return showWarning('Faça login para usar a análise inteligente.');
+
+      const payload = {
+        usuarioId: user.id,
+        marca: document.getElementById('diagMarca').value.trim(),
+        modelo: document.getElementById('diagModelo').value.trim(),
+        ano: document.getElementById('diagAno').value,
+        versao: document.getElementById('diagVersao').value.trim(),
+        problema: document.getElementById('diagProblema').value.trim()
+      };
+
+      if (!payload.marca || !payload.modelo || !payload.ano || payload.problema.length < 8) {
+        return showWarning('Informe marca, modelo, ano e descreva o problema com um pouco mais de detalhe.');
+      }
+
+      tpLoading(true, 'A IA está analisando o problema...');
+      const result = await apiCall('/diagnostico/analisar', { method: 'POST', body: JSON.stringify(payload) });
+      tpLoading(false);
+
+      if (!result.ok) return showError(result.msg || 'Não foi possível analisar o problema.');
+      tpRenderDiagnosis(result);
+      tpRenderHistory();
+    });
+  }
+
+  if (partForm) {
+    partForm.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      const user = getCurrentUser();
+      if (!user) return showWarning('Faça login para pesquisar peças.');
+
+      const useFilter = document.getElementById('usarFiltroVeiculo').checked;
+      const payload = {
+        usuarioId: user.id,
+        termo: document.getElementById('pecaTermo').value.trim(),
+        marca: useFilter ? document.getElementById('pecaMarca').value.trim() : '',
+        modelo: useFilter ? document.getElementById('pecaModelo').value.trim() : '',
+        ano: useFilter ? document.getElementById('pecaAno').value : ''
+      };
+
+      if (payload.termo.length < 2) return showWarning('Digite o nome da peça que deseja pesquisar.');
+      if (useFilter && (!payload.marca || !payload.modelo || !payload.ano)) {
+        return showWarning('Para filtrar por veículo, informe marca, modelo e ano.');
+      }
+
+      tpLoading(true, 'Pesquisando no catálogo...');
+      const result = await apiCall('/pecas/pesquisar', { method: 'POST', body: JSON.stringify(payload) });
+      tpLoading(false);
+
+      if (!result.ok) return showError(result.msg || 'Não foi possível pesquisar o catálogo.');
+      tpRenderParts(result);
+      tpRenderHistory();
+    });
+  }
+
+  const resultArea = document.getElementById('resultadoArea');
+  if (resultArea) {
+    resultArea.addEventListener('click', function(event) {
+      const suggested = event.target.closest('.tp-suggested-part');
+      if (suggested) {
+        const term = suggested.dataset.term || '';
+        const partTab = document.querySelector('[data-mode="peca"]');
+        if (partTab) partTab.click();
+        const input = document.getElementById('pecaTermo');
+        if (input) { input.value = term; input.focus(); }
+        return;
+      }
+
+      const offers = event.target.closest('.tp-offers');
+      if (offers) tpLoadOffers(Number(offers.dataset.pieceId));
+    });
+  }
+
+  tpRenderHistory();
+});
