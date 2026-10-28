@@ -856,3 +856,190 @@ document.addEventListener('DOMContentLoaded', function() {
 
   tpRenderHistory();
 });
+
+
+/* ===== TECH PECAS IA - GARAGEM ===== */
+function tpVehicleQueryString(vehicle) {
+  const params = new URLSearchParams();
+  if (vehicle.marca) params.set('marca', vehicle.marca);
+  if (vehicle.modelo) params.set('modelo', vehicle.modelo);
+  if (vehicle.ano) params.set('ano', vehicle.ano);
+  if (vehicle.versao) params.set('versao', vehicle.versao);
+  return params.toString();
+}
+
+async function tpLoadGarage() {
+  const user = getCurrentUser();
+  const list = document.getElementById('garageList');
+  if (!user || !list) return;
+
+  list.innerHTML = '<div class="garage-empty">Carregando seus veículos...</div>';
+  const result = await apiCall('/veiculos?usuarioId=' + encodeURIComponent(user.id));
+
+  if (!result.ok) {
+    list.innerHTML = '<div class="garage-empty">Não foi possível carregar sua garagem.</div>';
+    return;
+  }
+
+  const vehicles = Array.isArray(result.veiculos) ? result.veiculos : [];
+  if (!vehicles.length) {
+    list.innerHTML = '<div class="garage-empty">Você ainda não salvou nenhum veículo.</div>';
+    return;
+  }
+
+  list.innerHTML = vehicles.map(function(vehicle) {
+    return '<article class="garage-card">' +
+      '<div class="garage-card-icon">🚘</div>' +
+      '<div class="garage-card-body">' +
+        '<span class="garage-card-year">' + tpEscape(vehicle.ano || '') + '</span>' +
+        '<h3>' + tpEscape(vehicle.marca || '') + ' ' + tpEscape(vehicle.modelo || '') + '</h3>' +
+        '<p>' + tpEscape(vehicle.versao || 'Versão não informada') + '</p>' +
+      '</div>' +
+      '<div class="garage-card-actions">' +
+        '<button type="button" class="btn-primary small-button tp-use-vehicle" ' +
+          'data-marca="' + tpEscape(vehicle.marca || '') + '" ' +
+          'data-modelo="' + tpEscape(vehicle.modelo || '') + '" ' +
+          'data-ano="' + tpEscape(vehicle.ano || '') + '" ' +
+          'data-versao="' + tpEscape(vehicle.versao || '') + '">Usar este carro</button>' +
+        '<button type="button" class="garage-delete tp-delete-vehicle" data-id="' + Number(vehicle.id) + '">Remover</button>' +
+      '</div>' +
+    '</article>';
+  }).join('');
+}
+
+function tpPrefillSearchFromVehicle() {
+  const params = new URLSearchParams(window.location.search);
+  const marca = params.get('marca') || '';
+  const modelo = params.get('modelo') || '';
+  const ano = params.get('ano') || '';
+  const versao = params.get('versao') || '';
+  if (!marca && !modelo && !ano && !versao) return;
+
+  const diagMarca = document.getElementById('diagMarca');
+  const diagModelo = document.getElementById('diagModelo');
+  const diagAno = document.getElementById('diagAno');
+  const diagVersao = document.getElementById('diagVersao');
+
+  if (diagMarca) diagMarca.value = marca;
+  if (diagModelo) diagModelo.value = modelo;
+  if (diagAno) diagAno.value = ano;
+  if (diagVersao) diagVersao.value = versao;
+
+  const filter = document.getElementById('usarFiltroVeiculo');
+  const fields = document.getElementById('pecaVehicleFields');
+  const pecaMarca = document.getElementById('pecaMarca');
+  const pecaModelo = document.getElementById('pecaModelo');
+  const pecaAno = document.getElementById('pecaAno');
+
+  if (filter) filter.checked = true;
+  if (fields) fields.style.display = 'grid';
+  if (pecaMarca) pecaMarca.value = marca;
+  if (pecaModelo) pecaModelo.value = modelo;
+  if (pecaAno) pecaAno.value = ano;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  tpPrefillSearchFromVehicle();
+
+  const userArea = document.getElementById('userArea');
+  const user = getCurrentUser();
+  if (userArea && user) {
+    const garageLink = document.createElement('a');
+    garageLink.href = 'garagem.html';
+    garageLink.className = 'garage-pill-link';
+    garageLink.textContent = '🚘 Minha garagem';
+    userArea.prepend(garageLink);
+  }
+
+  const garageContent = document.getElementById('garageContent');
+  const garageLoginRequired = document.getElementById('garageLoginRequired');
+  if (!garageContent && !garageLoginRequired) return;
+
+  if (!user) {
+    if (garageLoginRequired) garageLoginRequired.style.display = 'flex';
+    if (garageContent) garageContent.style.display = 'none';
+    return;
+  }
+
+  if (garageLoginRequired) garageLoginRequired.style.display = 'none';
+  if (garageContent) garageContent.style.display = 'block';
+
+  const garageUserArea = document.getElementById('garageUserArea');
+  if (garageUserArea) {
+    garageUserArea.innerHTML =
+      '<div class="user-pill"><span>' + tpEscape(user.username) + '</span>' +
+      '<button id="garageLogout" type="button">Sair</button></div>';
+    document.getElementById('garageLogout')?.addEventListener('click', function() {
+      logoutCurrentUser();
+      window.location.href = 'index.html';
+    });
+  }
+
+  const form = document.getElementById('garageForm');
+  if (form) {
+    form.addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      const payload = {
+        usuarioId: user.id,
+        marca: document.getElementById('garageMarca').value.trim(),
+        modelo: document.getElementById('garageModelo').value.trim(),
+        ano: document.getElementById('garageAno').value,
+        versao: document.getElementById('garageVersao').value.trim()
+      };
+
+      if (!payload.marca || !payload.modelo || !payload.ano) {
+        return showWarning('Informe marca, modelo e ano do veículo.');
+      }
+
+      const result = await apiCall('/veiculos', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      if (!result.ok) return showError(result.msg || 'Não foi possível salvar o veículo.');
+
+      form.reset();
+      showSuccess('Veículo salvo na sua garagem.', 'Garagem atualizada');
+      tpLoadGarage();
+    });
+  }
+
+  const list = document.getElementById('garageList');
+  if (list) {
+    list.addEventListener('click', function(event) {
+      const useButton = event.target.closest('.tp-use-vehicle');
+      if (useButton) {
+        const vehicle = {
+          marca: useButton.dataset.marca || '',
+          modelo: useButton.dataset.modelo || '',
+          ano: useButton.dataset.ano || '',
+          versao: useButton.dataset.versao || ''
+        };
+        window.location.href = 'buscar.html?' + tpVehicleQueryString(vehicle);
+        return;
+      }
+
+      const deleteButton = event.target.closest('.tp-delete-vehicle');
+      if (!deleteButton) return;
+
+      const vehicleId = Number(deleteButton.dataset.id);
+      showConfirm(
+        'Deseja remover este veículo da sua garagem?',
+        async function() {
+          const result = await apiCall('/veiculos/' + vehicleId, {
+            method: 'DELETE',
+            body: JSON.stringify({ usuarioId: user.id })
+          });
+
+          if (!result.ok) return showError(result.msg || 'Não foi possível remover o veículo.');
+          tpLoadGarage();
+        },
+        null,
+        'Remover veículo?'
+      );
+    });
+  }
+
+  tpLoadGarage();
+});
