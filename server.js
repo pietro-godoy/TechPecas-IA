@@ -291,6 +291,31 @@ app.post('/api/veiculos', async (req, res) => {
   }
 });
 
+app.delete('/api/veiculos/:id', async (req, res) => {
+  const veiculoId = Number(req.params.id);
+  const usuarioId = Number(req.body.usuarioId);
+
+  if (!veiculoId || !usuarioId) {
+    return res.status(400).json({ ok: false, msg: 'Veículo e usuário são obrigatórios.' });
+  }
+
+  try {
+    const [result] = await pool.execute(
+      'DELETE FROM veiculos WHERE id = ? AND usuario_id = ?',
+      [veiculoId, usuarioId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ ok: false, msg: 'Veículo não encontrado.' });
+    }
+
+    return res.json({ ok: true, msg: 'Veículo removido da garagem.' });
+  } catch (error) {
+    console.error('Erro ao remover veículo:', error.message);
+    return res.status(500).json({ ok: false, msg: 'Erro ao remover veículo.' });
+  }
+});
+
 // ------------------- INTELIGÊNCIA ARTIFICIAL/TRIAGEM --------------------
 
 app.post('/api/diagnostico/analisar', async (req, res) => {
