@@ -49,10 +49,70 @@ const pool = mysql.createPool({
   ssl: buildDbSslOptions()
 });
 
+async function ensureColumn(table, column, definition) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS total
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?`,
+    [table, column]
+  );
+
+  if (Number(rows[0]?.total || 0) > 0) return false;
+
+  await pool.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+  return true;
+}
+
+async function ensureStoreSchema() {
+  const changes = [];
+
+  if (await ensureColumn('pecas', 'imagem_url', 'VARCHAR(500) NULL')) {
+    changes.push('pecas.imagem_url');
+  }
+
+  if (await ensureColumn('pecas', 'ativo', 'TINYINT(1) NOT NULL DEFAULT 1')) {
+    changes.push('pecas.ativo');
+  }
+
+  if (await ensureColumn('pedidos', 'subtotal', 'DECIMAL(10,2) NOT NULL DEFAULT 0')) {
+    changes.push('pedidos.subtotal');
+  }
+
+  if (await ensureColumn('pedidos', 'frete', 'DECIMAL(10,2) NOT NULL DEFAULT 0')) {
+    changes.push('pedidos.frete');
+  }
+
+  if (await ensureColumn('pedidos', 'forma_pagamento', "VARCHAR(30) NOT NULL DEFAULT 'a_definir'")) {
+    changes.push('pedidos.forma_pagamento');
+  }
+
+  if (await ensureColumn('pedidos', 'endereco_entrega', 'JSON NULL')) {
+    changes.push('pedidos.endereco_entrega');
+  }
+
+  await pool.query(
+    'UPDATE pedidos SET subtotal = valor_total WHERE subtotal = 0 AND valor_total > 0'
+  );
+
+  if (changes.length) {
+    console.log('✅ Estrutura da loja atualizada:', changes.join(', '));
+  } else {
+    console.log('✅ Estrutura da loja já estava atualizada');
+  }
+}
+
 pool.getConnection()
-  .then((conn) => {
+  .then(async (conn) => {
     console.log('✅ Conexão com banco de dados estabelecida');
     conn.release();
+
+    try {
+      await ensureStoreSchema();
+    } catch (error) {
+      console.error('❌ Erro ao atualizar estrutura da loja:', error.message);
+    }
   })
   .catch((err) => {
     console.error('❌ Erro ao conectar ao banco de dados:', err.message);
