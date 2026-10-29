@@ -41,6 +41,139 @@ function normalizeText(value) {
   return String(value || '').trim();
 }
 
+function buildExternalSearchQuery({ termo, marca, modelo, ano }) {
+  return [termo, marca, modelo, ano, 'autopeça']
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs = 12000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'TechPecas/1.0'
+      }
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const message = data?.error || data?.message || ('HTTP ' + response.status);
+      throw new Error(message);
+    }
+
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function searchExternalProducts({ termo, marca, modelo, ano }) {
+  const apiKey = process.env.SERPAPI_KEY;
+  if (!apiKey) {
+    return {
+      configured: false,
+      query: buildExternalSearchQuery({ termo, marca, modelo, ano }),
+      products: []
+    };
+  }
+
+  const query = buildExternalSearchQuery({ termo, marca, modelo, ano });
+  const params = new URLSearchParams({
+    engine: 'google_shopping',
+    q: query,
+    gl: 'br',
+    hl: 'pt-br',
+    google_domain: 'google.com.br',
+    device: 'desktop',
+    api_key: apiKey
+  });
+
+  const data = await fetchJsonWithTimeout('https://serpapi.com/search.json?' + params.toString());
+  const rows = Array.isArray(data.shopping_results) ? data.shopping_results : [];
+
+  const products = rows.slice(0, 12).map((item, index) => ({
+    position: Number(item.position || index + 1),
+    productId: item.product_id ? String(item.product_id) : null,
+    pageToken: item.immersive_product_page_token || null,
+    title: item.title || 'Produto',
+    source: item.source || 'Loja externa',
+    sourceIcon: item.source_icon || null,
+    price: item.price || null,
+    extractedPrice: Number.isFinite(Number(item.extracted_price)) ? Number(item.extracted_price) : null,
+    oldPrice: item.old_price || null,
+    rating: Number.isFinite(Number(item.rating)) ? Number(item.rating) : null,
+    reviews: Number.isFinite(Number(item.reviews)) ? Number(item.reviews) : null,
+    delivery: item.delivery || null,
+    snippet: item.snippet || null,
+    thumbnail: item.thumbnail || item.serpapi_thumbnail || null,
+    productLink: item.product_link || null,
+    multipleSources: Boolean(item.multiple_sources),
+    tag: item.tag || item.badge || null
+  }));
+
+  return {
+    configured: true,
+    query,
+    products,
+    provider: 'google_shopping'
+  };
+}
+
+async function loadExternalProductStores({ productId, pageToken }) {
+  const apiKey = process.env.SERPAPI_KEY;
+  if (!apiKey) {
+    return { configured: false, stores: [] };
+  }
+
+  if (!productId && !pageToken) {
+    return { configured: true, stores: [] };
+  }
+
+  const params = new URLSearchParams({
+    engine: 'google_product',
+    gl: 'br',
+    hl: 'pt-br',
+    api_key: apiKey
+  });
+
+  if (pageToken) params.set('page_token', pageToken);
+  else params.set('product_id', productId);
+
+  const data = await fetchJsonWithTimeout('https://serpapi.com/search.json?' + params.toString());
+  const product = data.product_results || {};
+  const stores = Array.isArray(product.stores) ? product.stores : [];
+
+  return {
+    configured: true,
+    title: product.title || null,
+    priceRange: product.price_range || null,
+    stores: stores.slice(0, 12).map((store, index) => ({
+      position: Number(store.position || index + 1),
+      name: store.name || 'Loja',
+      logo: store.logo || null,
+      link: store.link || null,
+      title: store.title || null,
+      rating: Number.isFinite(Number(store.rating)) ? Number(store.rating) : null,
+      reviews: Number.isFinite(Number(store.reviews)) ? Number(store.reviews) : null,
+      tag: store.tag || null,
+      details: Array.isArray(store.details_and_offers) ? store.details_and_offers.slice(0, 3) : [],
+      price: store.price || null,
+      extractedPrice: Number.isFinite(Number(store.extracted_price)) ? Number(store.extracted_price) : null,
+      originalPrice: store.original_price || null,
+      shipping: store.shipping || null,
+      total: store.total || null
+    }))
+  };
+}
+
 function cacheGet(key) {
   const item = aiCache.get(key);
   if (!item) return null;
@@ -402,6 +535,60 @@ Regras:
       msg: temporario
         ? 'O serviço de análise está temporariamente ocupado. Tente novamente em instantes.'
         : 'Não foi possível analisar o problema agora.',
+      detalhe: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// -------------------- OFERTAS EXTERNAS --------------------
+
+app.post('/api/ofertas-externas/pesquisar', async (req, res) => {
+  const termo = normalizeText(req.body.termo);
+  const marca = normalizeText(req.body.marca);
+  const modelo = normalizeText(req.body.modelo);
+  const ano = Number(req.body.ano) || null;
+
+  if (termo.length < 2) {
+    return res.status(400).json({ ok: false, msg: 'Digite o nome da peça que deseja procurar.' });
+  }
+
+  try {
+    const result = await searchExternalProducts({ termo, marca, modelo, ano });
+
+    return res.json({
+      ok: true,
+      termo,
+      filtros: marca && modelo && ano ? { marca, modelo, ano } : null,
+      ...result
+    });
+  } catch (error) {
+    console.error('Erro na busca externa:', error.message);
+    return res.status(502).json({
+      ok: false,
+      configured: Boolean(process.env.SERPAPI_KEY),
+      msg: 'Não foi possível consultar ofertas externas agora.',
+      detalhe: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+app.post('/api/ofertas-externas/lojas', async (req, res) => {
+  const productId = normalizeText(req.body.productId);
+  const pageToken = normalizeText(req.body.pageToken);
+
+  if (!productId && !pageToken) {
+    return res.status(400).json({ ok: false, msg: 'Produto externo inválido.' });
+  }
+
+  try {
+    const result = await loadExternalProductStores({ productId, pageToken });
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('Erro ao carregar lojas externas:', error.message);
+    return res.status(502).json({
+      ok: false,
+      configured: Boolean(process.env.SERPAPI_KEY),
+      msg: 'Não foi possível carregar as lojas deste produto agora.',
       detalhe: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
