@@ -3,58 +3,144 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tech Peças IA</title>
+  <meta name="description" content="Encontre peças compatíveis com seu veículo, compare opções e organize suas buscas em um só lugar.">
+  <title>Tech Peças</title>
   <link rel="stylesheet" href="style.css" />
   <script src="modal.js"></script>
 </head>
-<body>
-  <header class="navbar">
-    <div class="logo">🚗 Tech Peças IA</div>
-    <nav>
+<body class="site-body">
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="Tech Peças - início">
+      <span class="brand-mark">TP</span>
+      <span class="brand-name">Tech Peças</span>
+    </a>
+    <nav class="site-nav">
       <a href="index.html" class="active">Início</a>
       <a href="buscar.html">Buscar peças</a>
       <a href="garagem.html">Minha garagem</a>
-      <div id="navAuth" style="display:flex;gap:1rem;align-items:center;">
-        <a href="login.html" id="nav-login">Fazer Login</a>
+      <div id="navAuth" class="nav-auth">
+        <a href="login.html" id="nav-login" class="nav-login-link">Entrar</a>
       </div>
     </nav>
   </header>
 
-  <section class="hero tech-hero">
-    <div class="hero-text">
-      <span class="hero-kicker">AUTOPEÇAS + INTELIGÊNCIA ARTIFICIAL</span>
-      <h1>Entenda o problema.<br>Encontre a peça certa.</h1>
-      <p>Informe seu veículo e explique o que está acontecendo, ou pesquise diretamente pela peça. O Tech Peças IA ajuda a organizar as opções para você decidir melhor.</p>
-      <a href="buscar.html" class="btn-primary" id="btnBuscar">Começar busca</a>
-    </div>
-    <div class="hero-tech-card" aria-label="Fluxo da plataforma">
-      <div class="flow-step"><span>1</span><div><strong>Seu veículo</strong><small>Marca, modelo, ano e versão</small></div></div>
-      <div class="flow-line"></div>
-      <div class="flow-step"><span>2</span><div><strong>Problema ou peça</strong><small>Explique o sintoma ou faça uma busca direta</small></div></div>
-      <div class="flow-line"></div>
-      <div class="flow-step"><span>3</span><div><strong>IA + catálogo</strong><small>Componentes relacionados e opções compatíveis</small></div></div>
-    </div>
-  </section>
+  <main>
+    <section class="home-hero">
+      <div class="home-hero-copy">
+        <span class="section-label">AUTOPEÇAS SEM COMPLICAÇÃO</span>
+        <h1>A peça certa começa pelo seu carro.</h1>
+        <p>Descreva o que está acontecendo ou pesquise pelo nome da peça. A gente organiza as opções para você encontrar o que faz sentido para o seu veículo.</p>
+        <div class="hero-actions">
+          <a href="buscar.html" class="primary-cta" id="btnBuscar">Encontrar uma peça <span>→</span></a>
+          <a href="garagem.html" class="text-cta">Abrir minha garagem</a>
+        </div>
+        <div class="hero-trust">
+          <span>Compatibilidade por veículo</span>
+          <span>Comparação de opções</span>
+          <span>Histórico de buscas</span>
+        </div>
+      </div>
 
-  <section class="sobre">
-    <span class="eyebrow dark">COMO FUNCIONA</span>
-    <h2>Do problema à peça, em um só lugar</h2>
-    <p>O projeto foi pensado para simplificar a pesquisa de autopeças, principalmente para quem não domina termos de mecânica.</p>
-    <div class="cards">
-      <div class="card">🤖 IA auxilia na triagem do problema</div>
-      <div class="card">🚘 Filtra peças pelo veículo</div>
-      <div class="card">💰 Compara opções e preços cadastrados</div>
-      <div class="card">🛒 Compra no site ou acesso a parceiro</div>
-    </div>
-  </section>
+      <div class="home-product-demo" aria-label="Exemplo de busca de peças">
+        <div class="demo-topbar">
+          <span class="demo-dot"></span>
+          <span class="demo-label">SEU VEÍCULO</span>
+          <span class="demo-status">Salvo</span>
+        </div>
+        <div class="vehicle-preview">
+          <div class="vehicle-icon">
+            <span></span><span></span>
+          </div>
+          <div>
+            <small>Chevrolet</small>
+            <strong>Onix 2022</strong>
+            <p>LT 1.0 Turbo</p>
+          </div>
+        </div>
+        <div class="demo-search">
+          <span>O que você precisa?</span>
+          <strong>Pastilha de freio</strong>
+        </div>
+        <div class="demo-parts">
+          <div class="demo-part">
+            <div><small>Opção 01</small><strong>Pastilha dianteira</strong></div>
+            <span class="fit-badge">Compatível</span>
+          </div>
+          <div class="demo-part">
+            <div><small>Opção 02</small><strong>Kit de freio</strong></div>
+            <span class="fit-badge">Comparar</span>
+          </div>
+        </div>
+      </div>
+    </section>
 
-  <section class="clientes">
-    <h2>Uma plataforma simples para quem precisa de autopeças</h2>
-    <p>Você pode chegar sabendo exatamente a peça que quer ou apenas descrever o problema do carro. A plataforma organiza o caminho a partir daí.</p>
-  </section>
+    <section class="home-section">
+      <div class="section-heading">
+        <span class="section-label dark-label">DOIS CAMINHOS</span>
+        <h2>Você não precisa saber o nome da peça.</h2>
+        <p>Comece do jeito que for mais fácil para você.</p>
+      </div>
+      <div class="journey-grid">
+        <a href="buscar.html" class="journey-card journey-dark">
+          <span class="journey-number">01</span>
+          <div>
+            <h3>Meu carro está com um problema</h3>
+            <p>Conte o que você percebeu no veículo. A plataforma aponta componentes que podem estar relacionados e ajuda a começar a pesquisa.</p>
+          </div>
+          <span class="journey-arrow">↗</span>
+        </a>
+        <a href="buscar.html" class="journey-card">
+          <span class="journey-number">02</span>
+          <div>
+            <h3>Já sei qual peça quero</h3>
+            <p>Pesquise diretamente pelo nome da peça e use seu veículo para filtrar opções compatíveis.</p>
+          </div>
+          <span class="journey-arrow">↗</span>
+        </a>
+      </div>
+    </section>
 
-  <footer>
-    <p>© 2026 Tech Peças IA — Protótipo acadêmico</p>
+    <section class="home-section product-principles">
+      <div class="section-heading narrow">
+        <span class="section-label dark-label">FEITO PARA DECIDIR MELHOR</span>
+        <h2>Menos dúvida. Mais contexto.</h2>
+      </div>
+      <div class="principles-grid">
+        <article>
+          <span>01</span>
+          <h3>Seu carro primeiro</h3>
+          <p>Marca, modelo, ano e versão ficam salvos na garagem e podem ser reutilizados em novas buscas.</p>
+        </article>
+        <article>
+          <span>02</span>
+          <h3>Peças relacionadas</h3>
+          <p>Quando você descreve um sintoma, mostramos componentes que vale a pena investigar antes de comprar.</p>
+        </article>
+        <article>
+          <span>03</span>
+          <h3>Compare antes de escolher</h3>
+          <p>O catálogo organiza preços e ofertas cadastradas para facilitar a comparação entre alternativas.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="home-cta">
+      <div>
+        <span class="section-label">PRONTO PARA COMEÇAR?</span>
+        <h2>Coloque seu carro na garagem.</h2>
+        <p>Salve os dados uma vez e use nas próximas pesquisas.</p>
+      </div>
+      <a href="garagem.html" class="primary-cta light-cta">Adicionar veículo <span>→</span></a>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <a class="brand footer-brand" href="index.html">
+      <span class="brand-mark">TP</span>
+      <span class="brand-name">Tech Peças</span>
+    </a>
+    <p>Peças, compatibilidade e comparação em um só lugar.</p>
+    <small>© 2026 Tech Peças</small>
   </footer>
 
   <script src="script.js"></script>
