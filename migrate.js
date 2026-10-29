@@ -11,27 +11,38 @@ async function main() {
   }
 
   const sql = fs.readFileSync(migrationPath, 'utf8');
+  const host = process.env.DB_HOST || '127.0.0.1';
+  const port = Number(process.env.DB_PORT || 3306);
+  const database = process.env.DB_NAME || 'defaultdb';
+  const useSsl = String(process.env.DB_SSL || '').trim().toLowerCase() === 'true';
+
+  console.log(`Conectando ao MySQL em ${host}:${port}/${database}...`);
 
   const connection = await mysql.createConnection({
-    host: process.env.DB_HOST || '127.0.0.1',
+    host,
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'defaultdb',
-    port: Number(process.env.DB_PORT || 3306),
-    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
-    multipleStatements: true
+    database,
+    port,
+    ssl: useSsl ? { rejectUnauthorized: false } : undefined,
+    multipleStatements: true,
+    connectTimeout: 10000,
+    enableKeepAlive: true
   });
 
   try {
-    console.log('Conectado ao banco. Executando migração da loja...');
+    console.log('✅ Conexão estabelecida.');
+    console.log('Executando migração da loja...');
     await connection.query(sql);
     console.log('✅ Migração da loja concluída com sucesso.');
   } finally {
+    console.log('Encerrando conexão...');
     await connection.end();
   }
 }
 
 main().catch((error) => {
-  console.error('❌ Falha na migração:', error.message);
+  console.error('❌ Falha na migração:', error.code || 'ERRO');
+  console.error(error.message);
   process.exitCode = 1;
 });
