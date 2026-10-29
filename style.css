@@ -3477,3 +3477,18 @@ body.auth-page {
     grid-column: 2 / -1;
   }
 }
+
+/* Ajuste de contraste para usuário logado no cabeçalho escuro */
+.app-header .nav-user {
+  color: #ffffff !important;
+}
+
+.app-header .nav-logout {
+  color: #ffffff !important;
+  border-color: rgba(255,255,255,.55) !important;
+  background: transparent !important;
+}
+
+.app-header .nav-logout:hover {
+  background: rgba(255,255,255,.08) !important;
+}
