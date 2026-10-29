@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Carrinho e checkout do Tech Peças.">
+  <title>Carrinho | Tech Peças</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta name="theme-color" content="#0a0b0d">
+  <link rel="stylesheet" href="style.css">
+  <script src="modal.js"></script>
+</head>
+<body class="app-body">
+  <header class="site-header app-header">
+    <a class="brand" href="index.html"><span class="brand-mark">TP</span><span class="brand-name">Tech Peças</span></a>
+    <nav class="site-nav">
+      <a href="index.html">Início</a>
+      <a href="catalogo.html">Catálogo</a>
+      <a href="buscar.html">Buscar peças</a>
+      <a href="garagem.html">Minha garagem</a>
+      <a href="carrinho.html" class="active cart-nav-link">Carrinho <span id="cartCount" class="cart-count">0</span></a>
+      <div id="navAuth" class="nav-auth"><a href="login.html" id="nav-login" class="nav-login-link">Entrar</a></div>
+    </nav>
+  </header>
+
+  <main class="store-page">
+    <section class="store-intro compact-store-intro">
+      <span class="section-label">SEU CARRINHO</span>
+      <h1>Revise antes de finalizar.</h1>
+      <p>O preço final é conferido novamente pelo servidor antes de criar o pedido.</p>
+    </section>
+
+    <section class="checkout-layout">
+      <div>
+        <div id="cartItems" class="cart-items"></div>
+        <div id="cartEmpty" class="cart-empty" style="display:none;">
+          <h2>Seu carrinho está vazio.</h2>
+          <p>Escolha produtos do nosso catálogo para continuar.</p>
+          <a class="primary-cta" href="catalogo.html">Abrir catálogo <span>→</span></a>
+        </div>
+      </div>
+
+      <aside class="checkout-panel">
+        <div class="checkout-summary">
+          <span class="section-label dark-label">RESUMO</span>
+          <div class="summary-line"><span>Subtotal</span><strong id="cartSubtotal">R$ 0,00</strong></div>
+          <div class="summary-line"><span>Frete</span><strong>A calcular</strong></div>
+          <div class="summary-total"><span>Total</span><strong id="cartTotal">R$ 0,00</strong></div>
+        </div>
+
+        <form id="checkoutForm" class="checkout-form">
+          <div class="checkout-block">
+            <h2>Entrega</h2>
+            <div class="checkout-fields">
+              <label>CEP<input id="checkoutCep" type="text" inputmode="numeric" placeholder="00000-000" required></label>
+              <label class="field-wide">Logradouro<input id="checkoutLogradouro" type="text" placeholder="Rua / Avenida" required></label>
+              <label>Número<input id="checkoutNumero" type="text" placeholder="123" required></label>
+              <label>Complemento<input id="checkoutComplemento" type="text" placeholder="Opcional"></label>
+              <label>Cidade<input id="checkoutCidade" type="text" required></label>
+              <label>Estado<input id="checkoutEstado" type="text" maxlength="2" placeholder="SP" required></label>
+            </div>
+          </div>
+
+          <div class="checkout-block">
+            <h2>Pagamento</h2>
+            <label class="payment-choice">
+              <input type="radio" name="formaPagamento" value="pix" checked>
+              <span><strong>Pix</strong><small>Pagamento instantâneo</small></span>
+            </label>
+            <label class="payment-choice">
+              <input type="radio" name="formaPagamento" value="cartao">
+              <span><strong>Cartão</strong><small>Os dados do cartão serão preenchidos em ambiente seguro do provedor de pagamento.</small></span>
+            </label>
+          </div>
+
+          <button id="checkoutSubmit" type="submit" class="primary-cta button-reset checkout-submit">Criar pedido <span>→</span></button>
+          <p class="checkout-security">Nenhum número de cartão ou CVV é armazenado pelo Tech Peças.</p>
+        </form>
+      </aside>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+  <script src="loja.js"></script>
+</body>
+</html>
