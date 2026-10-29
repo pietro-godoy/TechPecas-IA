@@ -3492,3 +3492,34 @@ body.auth-page {
 .app-header .nav-logout:hover {
   background: rgba(255,255,255,.08) !important;
 }
+
+
+
+/* Contraste contextual do usuário logado */
+.site-header .nav-user {
+  color: var(--tp-black) !important;
+}
+
+.site-header .nav-logout {
+  color: var(--tp-black) !important;
+  border-color: #cfcac2 !important;
+  background: transparent !important;
+}
+
+.site-header .nav-logout:hover {
+  background: #ece9e3 !important;
+}
+
+.app-header .nav-user {
+  color: #ffffff !important;
+}
+
+.app-header .nav-logout {
+  color: #ffffff !important;
+  border-color: rgba(255,255,255,.55) !important;
+  background: transparent !important;
+}
+
+.app-header .nav-logout:hover {
+  background: rgba(255,255,255,.08) !important;
+}
