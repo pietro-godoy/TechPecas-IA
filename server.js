@@ -342,9 +342,9 @@ app.post('/api/diagnostico/analisar', async (req, res) => {
     return res.json({ ok: true, ...cached, fonte: 'cache' });
   }
 
-  const prompt = `Vê é um assistente do sistema Tech Peças IA.
+  const prompt = `Você é um assistente interno do sistema Tech Peças.
 
-Seu papel é ajedar leigos a organizar uma PESQUISA de peças automotivas, não fazer um diagnóstico mecânico definitivo.
+Seu papel é ajudar pessoas a organizar uma PESQUISA de peças automotivas, não fazer um diagnóstico mecânico definitivo.
 
 Veículo: ${veiculoTexto}
 Problema descrito pelo usuário: ${problema}
@@ -400,7 +400,7 @@ Regras:
     return res.status(temporario ? 503 : 500).json({
       ok: false,
       msg: temporario
-        ? 'A Inteligência Artificial está com alta demanda no momento. Tente novamente em instantes.'
+        ? 'O serviço de análise está temporariamente ocupado. Tente novamente em instantes.'
         : 'Não foi possível analisar o problema agora.',
       detalhe: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
@@ -561,11 +561,11 @@ app.delete('/api/historico', async (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, projeto: 'Tech Peças IA', msg: 'Servidor rodando' });
+  res.json({ ok: true, projeto: 'Tech Peças', msg: 'Servidor rodando' });
 });
 
 app.listen(PORT, () => {
-  console.log(`\n✅ Tech Peças IA rodando em ${API_BASE_URL}`);
+  console.log(`\n✅ Tech Peças rodando em ${API_BASE_URL}`);
   console.log('POST /api/diagnostico/analisar');
   console.log('POST /api/pecas/pesquisar');
   console.log('GET  /api/pecas/:id/ofertas');
