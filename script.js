@@ -1194,3 +1194,38 @@ document.addEventListener('DOMContentLoaded', function() {
 
   tpLoadGarage();
 });
+
+
+/* ===== TECH PECAS - HOME VEHICLE ===== */
+async function tpLoadHomeVehicle() {
+  const nameEl = document.getElementById('homeVehicleName');
+  if (!nameEl) return;
+
+  const user = getCurrentUser();
+  if (!user) return;
+
+  const result = await apiCall('/veiculos?usuarioId=' + encodeURIComponent(user.id), { method: 'GET' });
+  if (!result.ok || !Array.isArray(result.veiculos) || !result.veiculos.length) return;
+
+  const vehicle = result.veiculos[0];
+  const labelEl = document.getElementById('homeVehicleLabel');
+  const statusEl = document.getElementById('homeVehicleStatus');
+  const brandEl = document.getElementById('homeVehicleBrand');
+  const versionEl = document.getElementById('homeVehicleVersion');
+
+  if (labelEl) labelEl.textContent = 'SEU VEÍCULO';
+  if (statusEl) statusEl.textContent = 'Salvo';
+  if (brandEl) brandEl.textContent = vehicle.marca || 'Meu veículo';
+
+  const model = vehicle.modelo || 'Veículo';
+  const year = vehicle.ano ? ' ' + vehicle.ano : '';
+  nameEl.textContent = model + year;
+
+  if (versionEl) {
+    versionEl.textContent = vehicle.versao || 'Versão não informada';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  tpLoadHomeVehicle();
+});
