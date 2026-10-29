@@ -7,24 +7,26 @@ function buildSslOptions() {
   const useSsl = String(process.env.DB_SSL || '').trim().toLowerCase() === 'true';
   if (!useSsl) return undefined;
 
+  const verifyCa = String(process.env.DB_SSL_VERIFY || '').trim().toLowerCase() === 'true';
+
+  if (!verifyCa) {
+    console.log('SSL: REQUIRED (criptografado, sem validação de CA)');
+    return { rejectUnauthorized: false };
+  }
+
   const configuredPath = String(process.env.DB_CA_PATH || '').trim();
   const candidate = configuredPath
     ? path.resolve(__dirname, configuredPath)
     : path.join(__dirname, 'ca.pem');
 
-  if (fs.existsSync(candidate)) {
-    console.log('Usando CA do Aiven em:', candidate);
-    return {
-      ca: fs.readFileSync(candidate),
-      rejectUnauthorized: true,
-      minVersion: 'TLSv1.2'
-    };
+  if (!fs.existsSync(candidate)) {
+    throw new Error('DB_SSL_VERIFY=true, mas o certificado CA não foi encontrado.');
   }
 
-  console.log('CA do Aiven não encontrada; usando TLS sem validação de CA.');
+  console.log('SSL: VERIFY_CA usando:', candidate);
   return {
-    rejectUnauthorized: false,
-    minVersion: 'TLSv1.2'
+    ca: fs.readFileSync(candidate),
+    rejectUnauthorized: true
   };
 }
 
@@ -50,7 +52,7 @@ async function main() {
     port,
     ssl: buildSslOptions(),
     multipleStatements: true,
-    connectTimeout: 10000,
+    connectTimeout: 15000,
     enableKeepAlive: true
   });
 
