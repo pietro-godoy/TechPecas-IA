@@ -1,6 +1,8 @@
 const express = require('express');
 const mysql = require('mysql2/promise');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
 
@@ -10,6 +12,27 @@ const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${PORT}/api`;
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
 
 const aiCache = new Map();
+
+function buildDbSslOptions() {
+  if (process.env.DB_SSL !== 'true') return undefined;
+
+  const caPath = process.env.DB_CA_PATH
+    ? path.resolve(__dirname, process.env.DB_CA_PATH)
+    : path.join(__dirname, 'ca.pem');
+
+  if (fs.existsSync(caPath)) {
+    return {
+      ca: fs.readFileSync(caPath),
+      rejectUnauthorized: true,
+      minVersion: 'TLSv1.2'
+    };
+  }
+
+  return {
+    rejectUnauthorized: false,
+    minVersion: 'TLSv1.2'
+  };
+}
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || '127.0.0.1',
@@ -21,7 +44,7 @@ const pool = mysql.createPool({
   connectionLimit: 5,
   queueLimit: 0,
   enableKeepAlive: true,
-  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined
+  ssl: buildDbSslOptions()
 });
 
 pool.getConnection()
