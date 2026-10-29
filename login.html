@@ -3,47 +3,70 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login - Tech Peças IA</title>
+  <meta name="description" content="Entre na sua conta Tech Peças para salvar veículos e pesquisas.">
+  <title>Entrar | Tech Peças</title>
   <link rel="stylesheet" href="style.css">
   <script src="modal.js"></script>
 </head>
-<body class="login-body">
+<body class="auth-page">
+  <a class="brand auth-brand" href="index.html">
+    <span class="brand-mark">TP</span>
+    <span class="brand-name">Tech Peças</span>
+  </a>
 
-  <div class="login-container">
-    <div class="login-left">
-      <h1>🚗 Tech Peças IA</h1>
-      <p>Sua conta para salvar veículos, pesquisas e usar os recursos inteligentes do Tech Peças IA.</p>
-    </div>
-
-    <div class="login-right">
-      <a href="index.html" class="btn-back-login" title="Voltar">←</a>
-      
-      <h2 id="formTitle">Fazer Login</h2>
-
-      <!-- Formulário de Login -->
-      <form id="loginForm" class="auth-form" style="display: none;">
-        <input type="text" id="loginUser" placeholder="Usuário ou Email">
-        <input type="password" id="loginPass" placeholder="Senha">
-        <button type="submit">Entrar</button>
-      </form>
-
-      <!-- Formulário de Cadastro -->
-      <form id="registerForm" class="auth-form" style="display: none;">
-        <input type="text" id="registerUsername" placeholder="Nome de usuário">
-        <input type="email" id="registerEmail" placeholder="Email">
-        <input type="password" id="registerPass" placeholder="Senha">
-        <input type="password" id="registerPassConfirm" placeholder="Confirmar senha">
-        <button type="submit">Cadastrar</button>
-      </form>
-
-      <div class="auth-actions">
-        <p id="toggleText">Não tem conta?</p>
-        <button id="toggleBtn" type="button">Cadastre-se</button>
+  <main class="auth-layout">
+    <section class="auth-story">
+      <span class="section-label">SUA CONTA, SEU CARRO</span>
+      <h1>Volte de onde parou.</h1>
+      <p>Salve seus veículos, mantenha o histórico organizado e reutilize os dados do carro nas próximas pesquisas.</p>
+      <div class="auth-benefits">
+        <div><span>01</span><p>Veículos salvos na sua garagem</p></div>
+        <div><span>02</span><p>Histórico das últimas pesquisas</p></div>
+        <div><span>03</span><p>Busca mais rápida por compatibilidade</p></div>
       </div>
+    </section>
 
-      <div id="authMsg" class="auth-msg" aria-live="polite"></div>
-    </div>
-  </div>
+    <section class="auth-panel">
+      <a href="index.html" class="auth-back">← Voltar</a>
+      <div class="auth-panel-inner">
+        <span class="section-label dark-label">MINHA CONTA</span>
+        <h2 id="formTitle">Fazer Login</h2>
+        <p class="auth-subtitle">Entre para acessar sua garagem e continuar suas pesquisas.</p>
+
+        <form id="loginForm" class="auth-form modern-auth-form" style="display:none;">
+          <label>Usuário ou email
+            <input type="text" id="loginUser" placeholder="Digite seu usuário ou email" autocomplete="username">
+          </label>
+          <label>Senha
+            <input type="password" id="loginPass" placeholder="Digite sua senha" autocomplete="current-password">
+          </label>
+          <button type="submit" class="primary-cta button-reset auth-submit">Entrar <span>→</span></button>
+        </form>
+
+        <form id="registerForm" class="auth-form modern-auth-form" style="display:none;">
+          <label>Nome de usuário
+            <input type="text" id="registerUsername" placeholder="Como você quer ser chamado" autocomplete="username">
+          </label>
+          <label>Email
+            <input type="email" id="registerEmail" placeholder="seuemail@exemplo.com" autocomplete="email">
+          </label>
+          <label>Senha
+            <input type="password" id="registerPass" placeholder="Mínimo de 6 caracteres" autocomplete="new-password">
+          </label>
+          <label>Confirmar senha
+            <input type="password" id="registerPassConfirm" placeholder="Digite a senha novamente" autocomplete="new-password">
+          </label>
+          <button type="submit" class="primary-cta button-reset auth-submit">Criar conta <span>→</span></button>
+        </form>
+
+        <div class="auth-actions">
+          <p id="toggleText">Não tem conta?</p>
+          <button id="toggleBtn" type="button">Criar minha conta</button>
+        </div>
+        <div id="authMsg" class="auth-msg" aria-live="polite"></div>
+      </div>
+    </section>
+  </main>
 
   <script src="script.js"></script>
 </body>
