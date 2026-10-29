@@ -3,6 +3,31 @@ const path = require('path');
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
+function buildSslOptions() {
+  const useSsl = String(process.env.DB_SSL || '').trim().toLowerCase() === 'true';
+  if (!useSsl) return undefined;
+
+  const configuredPath = String(process.env.DB_CA_PATH || '').trim();
+  const candidate = configuredPath
+    ? path.resolve(__dirname, configuredPath)
+    : path.join(__dirname, 'ca.pem');
+
+  if (fs.existsSync(candidate)) {
+    console.log('Usando CA do Aiven em:', candidate);
+    return {
+      ca: fs.readFileSync(candidate),
+      rejectUnauthorized: true,
+      minVersion: 'TLSv1.2'
+    };
+  }
+
+  console.log('CA do Aiven não encontrada; usando TLS sem validação de CA.');
+  return {
+    rejectUnauthorized: false,
+    minVersion: 'TLSv1.2'
+  };
+}
+
 async function main() {
   const migrationPath = path.join(__dirname, 'migracao_loja.sql');
 
@@ -14,7 +39,6 @@ async function main() {
   const host = process.env.DB_HOST || '127.0.0.1';
   const port = Number(process.env.DB_PORT || 3306);
   const database = process.env.DB_NAME || 'defaultdb';
-  const useSsl = String(process.env.DB_SSL || '').trim().toLowerCase() === 'true';
 
   console.log(`Conectando ao MySQL em ${host}:${port}/${database}...`);
 
@@ -24,7 +48,7 @@ async function main() {
     password: process.env.DB_PASSWORD || '',
     database,
     port,
-    ssl: useSsl ? { rejectUnauthorized: false } : undefined,
+    ssl: buildSslOptions(),
     multipleStatements: true,
     connectTimeout: 10000,
     enableKeepAlive: true
