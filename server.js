@@ -3,6 +3,7 @@ const mysql = require('mysql2/promise');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
 
@@ -68,6 +69,10 @@ async function ensureColumn(table, column, definition) {
 async function ensureStoreSchema() {
   const changes = [];
 
+  if (await ensureColumn('usuarios', 'papel', "VARCHAR(20) NOT NULL DEFAULT 'cliente'")) {
+    changes.push('usuarios.papel');
+  }
+
   if (await ensureColumn('pecas', 'imagem_url', 'VARCHAR(500) NULL')) {
     changes.push('pecas.imagem_url');
   }
@@ -95,6 +100,14 @@ async function ensureStoreSchema() {
   await pool.query(
     'UPDATE pedidos SET subtotal = valor_total WHERE subtotal = 0 AND valor_total > 0'
   );
+
+  const adminUsername = String(process.env.ADMIN_USERNAME || '').trim();
+  if (adminUsername) {
+    await pool.execute(
+      "UPDATE usuarios SET papel = 'admin' WHERE LOWER(username) = LOWER(?)",
+      [adminUsername]
+    );
+  }
 
   if (changes.length) {
     console.log('✅ Estrutura da loja atualizada:', changes.join(', '));
@@ -124,6 +137,53 @@ app.use(express.static(__dirname));
 
 function normalizeText(value) {
   return String(value || '').trim();
+}
+
+async function createSessionToken(usuarioId) {
+  const token = crypto.randomBytes(32).toString('hex');
+
+  await pool.execute(
+    'DELETE FROM sessoes WHERE usuario_id = ? AND expira_em IS NOT NULL AND expira_em < NOW()',
+    [usuarioId]
+  );
+
+  await pool.execute(
+    'INSERT INTO sessoes (id, usuario_id, expira_em) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))',
+    [token, usuarioId]
+  );
+
+  return token;
+}
+
+async function requireAdmin(req, res, next) {
+  const authorization = String(req.headers.authorization || '');
+  const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+
+  if (!token) {
+    return res.status(401).json({ ok: false, msg: 'Faça login para acessar o painel administrativo.' });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT u.id, u.username, u.email, u.papel
+       FROM sessoes s
+       INNER JOIN usuarios u ON u.id = s.usuario_id
+       WHERE s.id = ?
+         AND (s.expira_em IS NULL OR s.expira_em > NOW())
+         AND u.papel = 'admin'
+       LIMIT 1`,
+      [token]
+    );
+
+    if (!rows.length) {
+      return res.status(403).json({ ok: false, msg: 'Acesso permitido somente para administrador.' });
+    }
+
+    req.admin = rows[0];
+    next();
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível validar o acesso administrativo.' });
+  }
 }
 
 function buildExternalSearchQuery({ termo, marca, modelo, ano }) {
@@ -436,7 +496,12 @@ app.post('/api/auth/register', async (req, res) => {
     return res.json({
       ok: true,
       msg: 'Usuário registrado com sucesso',
-      usuario: { id: result.insertId, username }
+      usuario: {
+        id: result.insertId,
+        username,
+        papel: 'cliente',
+        token: await createSessionToken(result.insertId)
+      }
     });
   } catch (error) {
     console.error('Erro ao registrar:', error.message);
@@ -454,7 +519,7 @@ app.post('/api/auth/login', async (req, res) => {
 
   try {
     const [usuarios] = await pool.execute(
-      'SELECT id, username, email FROM usuarios WHERE username = ? AND senha = ? LIMIT 1',
+      'SELECT id, username, email, papel FROM usuarios WHERE username = ? AND senha = ? LIMIT 1',
       [username, password]
     );
 
@@ -462,7 +527,10 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ ok: false, msg: 'Usuário ou senh inválidos' });
     }
 
-    return res.json({ ok: true, msg: 'Login realizado com sucesso', usuario: usuarios[0] });
+    const usuario = usuarios[0];
+    usuario.token = await createSessionToken(usuario.id);
+
+    return res.json({ ok: true, msg: 'Login realizado com sucesso', usuario });
   } catch (error) {
     console.error('Erro ao fazer login:', error.message);
     return res.status(500).json({ ok: false, msg: 'Erro ao fazer login.' });
@@ -622,6 +690,329 @@ Regras:
         : 'Não foi possível analisar o problema agora.',
       detalhe: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+  }
+});
+
+// -------------------- ADMINISTRAÇÃO --------------------
+
+app.get('/api/admin/me', requireAdmin, async (req, res) => {
+  return res.json({ ok: true, admin: req.admin });
+});
+
+app.get('/api/admin/resumo', requireAdmin, async (req, res) => {
+  try {
+    const [[produtos]] = await pool.query(
+      'SELECT COUNT(*) AS total, SUM(CASE WHEN ativo = 1 THEN 1 ELSE 0 END) AS ativos, SUM(CASE WHEN estoque <= 3 AND ativo = 1 THEN 1 ELSE 0 END) AS estoque_baixo FROM pecas'
+    );
+    const [[pedidos]] = await pool.query(
+      "SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'aguardando_pagamento' THEN 1 ELSE 0 END) AS aguardando, COALESCE(SUM(CASE WHEN status <> 'cancelado' THEN valor_total ELSE 0 END), 0) AS valor_total FROM pedidos"
+    );
+    const [[usuarios]] = await pool.query('SELECT COUNT(*) AS total FROM usuarios');
+
+    return res.json({
+      ok: true,
+      resumo: {
+        produtos: Number(produtos.total || 0),
+        produtosAtivos: Number(produtos.ativos || 0),
+        estoqueBaixo: Number(produtos.estoque_baixo || 0),
+        pedidos: Number(pedidos.total || 0),
+        aguardandoPagamento: Number(pedidos.aguardando || 0),
+        valorPedidos: Number(pedidos.valor_total || 0),
+        usuarios: Number(usuarios.total || 0)
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível carregar o resumo administrativo.' });
+  }
+});
+
+app.get('/api/admin/produtos', requireAdmin, async (req, res) => {
+  try {
+    const [produtos] = await pool.query(
+      `SELECT p.id, p.nome, p.descricao, p.fabricante, p.categoria, p.sku,
+              p.preco_site, p.estoque, p.imagem_url, p.ativo, p.criado_em,
+              COUNT(c.id) AS total_compatibilidades
+       FROM pecas p
+       LEFT JOIN compatibilidades c ON c.peca_id = p.id
+       GROUP BY p.id
+       ORDER BY p.criado_em DESC, p.id DESC`
+    );
+
+    return res.json({
+      ok: true,
+      produtos: produtos.map((p) => ({
+        ...p,
+        preco_site: p.preco_site === null ? null : Number(p.preco_site),
+        estoque: Number(p.estoque || 0),
+        ativo: Number(p.ativo || 0),
+        total_compatibilidades: Number(p.total_compatibilidades || 0)
+      }))
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível carregar os produtos.' });
+  }
+});
+
+app.get('/api/admin/produtos/:id', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ ok: false, msg: 'Produto inválido.' });
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, nome, descricao, fabricante, categoria, sku,
+              preco_site, estoque, imagem_url, ativo
+       FROM pecas WHERE id = ? LIMIT 1`,
+      [id]
+    );
+
+    if (!rows.length) return res.status(404).json({ ok: false, msg: 'Produto não encontrado.' });
+
+    const [compatibilidades] = await pool.execute(
+      `SELECT id, marca, modelo, ano_inicio, ano_fim, observacao
+       FROM compatibilidades
+       WHERE peca_id = ?
+       ORDER BY marca, modelo, ano_inicio`,
+      [id]
+    );
+
+    const produto = rows[0];
+    produto.preco_site = produto.preco_site === null ? null : Number(produto.preco_site);
+    produto.estoque = Number(produto.estoque || 0);
+    produto.ativo = Number(produto.ativo || 0);
+
+    return res.json({ ok: true, produto, compatibilidades });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível carregar o produto.' });
+  }
+});
+
+function normalizeAdminProduct(body) {
+  const precoRaw = body.preco_site;
+  const compatibilidades = Array.isArray(body.compatibilidades) ? body.compatibilidades : [];
+
+  return {
+    nome: normalizeText(body.nome),
+    descricao: normalizeText(body.descricao),
+    fabricante: normalizeText(body.fabricante),
+    categoria: normalizeText(body.categoria),
+    sku: normalizeText(body.sku),
+    preco: precoRaw === '' || precoRaw === null || precoRaw === undefined ? null : Number(precoRaw),
+    estoque: Math.max(0, Number(body.estoque) || 0),
+    imagemUrl: normalizeText(body.imagem_url),
+    ativo: Number(body.ativo) === 0 ? 0 : 1,
+    compatibilidades: compatibilidades
+      .map((c) => ({
+        marca: normalizeText(c.marca),
+        modelo: normalizeText(c.modelo),
+        ano_inicio: Number(c.ano_inicio),
+        ano_fim: Number(c.ano_fim),
+        observacao: normalizeText(c.observacao)
+      }))
+      .filter((c) => c.marca && c.modelo && c.ano_inicio && c.ano_fim)
+  };
+}
+
+async function replaceCompatibilities(conn, pecaId, compatibilidades) {
+  await conn.execute('DELETE FROM compatibilidades WHERE peca_id = ?', [pecaId]);
+
+  for (const c of compatibilidades) {
+    if (c.ano_fim < c.ano_inicio) {
+      throw new Error('Ano final da compatibilidade não pode ser menor que o ano inicial.');
+    }
+
+    await conn.execute(
+      `INSERT INTO compatibilidades
+       (peca_id, marca, modelo, ano_inicio, ano_fim, observacao)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [pecaId, c.marca, c.modelo, c.ano_inicio, c.ano_fim, c.observacao || null]
+    );
+  }
+}
+
+app.post('/api/admin/produtos', requireAdmin, async (req, res) => {
+  const produto = normalizeAdminProduct(req.body);
+
+  if (!produto.nome || !produto.sku) {
+    return res.status(400).json({ ok: false, msg: 'Nome e SKU são obrigatórios.' });
+  }
+
+  if (produto.preco !== null && (!Number.isFinite(produto.preco) || produto.preco < 0)) {
+    return res.status(400).json({ ok: false, msg: 'Preço inválido.' });
+  }
+
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [result] = await conn.execute(
+      `INSERT INTO pecas
+       (nome, descricao, fabricante, categoria, sku, preco_site, estoque, imagem_url, ativo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        produto.nome,
+        produto.descricao || null,
+        produto.fabricante || null,
+        produto.categoria || null,
+        produto.sku,
+        produto.preco,
+        produto.estoque,
+        produto.imagemUrl || null,
+        produto.ativo
+      ]
+    );
+
+    await replaceCompatibilities(conn, result.insertId, produto.compatibilidades);
+    await conn.commit();
+
+    return res.json({ ok: true, id: result.insertId, msg: 'Produto cadastrado com sucesso.' });
+  } catch (error) {
+    await conn.rollback();
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ ok: false, msg: 'Já existe um produto com esse SKU.' });
+    }
+    return res.status(400).json({ ok: false, msg: error.message || 'Não foi possível cadastrar o produto.' });
+  } finally {
+    conn.release();
+  }
+});
+
+app.put('/api/admin/produtos/:id', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const produto = normalizeAdminProduct(req.body);
+
+  if (!id || !produto.nome || !produto.sku) {
+    return res.status(400).json({ ok: false, msg: 'Produto, nome e SKU são obrigatórios.' });
+  }
+
+  if (produto.preco !== null && (!Number.isFinite(produto.preco) || produto.preco < 0)) {
+    return res.status(400).json({ ok: false, msg: 'Preço inválido.' });
+  }
+
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [result] = await conn.execute(
+      `UPDATE pecas
+       SET nome = ?, descricao = ?, fabricante = ?, categoria = ?, sku = ?,
+           preco_site = ?, estoque = ?, imagem_url = ?, ativo = ?
+       WHERE id = ?`,
+      [
+        produto.nome,
+        produto.descricao || null,
+        produto.fabricante || null,
+        produto.categoria || null,
+        produto.sku,
+        produto.preco,
+        produto.estoque,
+        produto.imagemUrl || null,
+        produto.ativo,
+        id
+      ]
+    );
+
+    if (!result.affectedRows) throw new Error('Produto não encontrado.');
+
+    await replaceCompatibilities(conn, id, produto.compatibilidades);
+    await conn.commit();
+
+    return res.json({ ok: true, msg: 'Produto atualizado com sucesso.' });
+  } catch (error) {
+    await conn.rollback();
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ ok: false, msg: 'Já existe outro produto com esse SKU.' });
+    }
+    return res.status(400).json({ ok: false, msg: error.message || 'Não foi possível atualizar o produto.' });
+  } finally {
+    conn.release();
+  }
+});
+
+app.patch('/api/admin/produtos/:id/status', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const ativo = Number(req.body.ativo) === 1 ? 1 : 0;
+
+  if (!id) return res.status(400).json({ ok: false, msg: 'Produto inválido.' });
+
+  try {
+    const [result] = await pool.execute('UPDATE pecas SET ativo = ? WHERE id = ?', [ativo, id]);
+    if (!result.affectedRows) return res.status(404).json({ ok: false, msg: 'Produto não encontrado.' });
+    return res.json({ ok: true, msg: ativo ? 'Produto ativado.' : 'Produto desativado.' });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível alterar o status do produto.' });
+  }
+});
+
+app.delete('/api/admin/produtos/:id', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ ok: false, msg: 'Produto inválido.' });
+
+  try {
+    const [[refs]] = await pool.execute(
+      'SELECT COUNT(*) AS total FROM itens_pedido WHERE peca_id = ?',
+      [id]
+    );
+
+    if (Number(refs.total || 0) > 0) {
+      return res.status(409).json({
+        ok: false,
+        msg: 'Este produto já faz parte de pedidos. Desative-o em vez de excluir.'
+      });
+    }
+
+    const [result] = await pool.execute('DELETE FROM pecas WHERE id = ?', [id]);
+    if (!result.affectedRows) return res.status(404).json({ ok: false, msg: 'Produto não encontrado.' });
+
+    return res.json({ ok: true, msg: 'Produto excluído.' });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível excluir o produto.' });
+  }
+});
+
+app.get('/api/admin/pedidos', requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT p.id, p.valor_total, p.forma_pagamento, p.status, p.criado_em,
+              u.username, u.email,
+              COUNT(ip.id) AS total_itens
+       FROM pedidos p
+       INNER JOIN usuarios u ON u.id = p.usuario_id
+       LEFT JOIN itens_pedido ip ON ip.pedido_id = p.id
+       GROUP BY p.id
+       ORDER BY p.criado_em DESC
+       LIMIT 100`
+    );
+
+    return res.json({
+      ok: true,
+      pedidos: rows.map((p) => ({
+        ...p,
+        valor_total: Number(p.valor_total || 0),
+        total_itens: Number(p.total_itens || 0)
+      }))
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível carregar os pedidos.' });
+  }
+});
+
+app.patch('/api/admin/pedidos/:id/status', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const status = normalizeText(req.body.status);
+  const permitidos = ['aguardando_pagamento', 'pago', 'preparando', 'enviado', 'concluido', 'cancelado'];
+
+  if (!id || !permitidos.includes(status)) {
+    return res.status(400).json({ ok: false, msg: 'Pedido ou status inválido.' });
+  }
+
+  try {
+    const [result] = await pool.execute('UPDATE pedidos SET status = ? WHERE id = ?', [status, id]);
+    if (!result.affectedRows) return res.status(404).json({ ok: false, msg: 'Pedido não encontrado.' });
+    return res.json({ ok: true, msg: 'Status do pedido atualizado.' });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível atualizar o pedido.' });
   }
 });
 
