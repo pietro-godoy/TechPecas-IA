@@ -14,7 +14,9 @@ function setCurrentUser(userData) {
   if (!userData || !userData.id || !userData.username) return;
   localStorage.setItem(USER_KEY, JSON.stringify({
     id: userData.id,
-    username: userData.username
+    username: userData.username,
+    papel: userData.papel || 'cliente',
+    token: userData.token || null
   }));
 }
 
@@ -23,8 +25,10 @@ function logoutCurrentUser() {
 }
 
 async function apiCall(endpoint, options = {}) {
+  const user = getCurrentUser();
   const headers = {
     'Content-Type': 'application/json',
+    ...(user?.token ? { Authorization: 'Bearer ' + user.token } : {}),
     ...options.headers
   };
 
@@ -124,6 +128,18 @@ async function clearHistoryFor() {
 document.addEventListener("DOMContentLoaded", () => {
   const current = getCurrentUser();
   const currentUsername = current?.username || null;
+
+  if (current?.papel === 'admin') {
+    const navAuthTarget = document.getElementById('navAuth');
+    const nav = navAuthTarget?.parentElement;
+    if (nav && !nav.querySelector('.admin-nav-link')) {
+      const adminLink = document.createElement('a');
+      adminLink.href = 'admin.html';
+      adminLink.className = 'admin-nav-link';
+      adminLink.textContent = 'Admin';
+      nav.insertBefore(adminLink, navAuthTarget);
+    }
+  }
   
   // Verificar se está na página de busca e se não está logado
   const searchContent = document.getElementById("searchContent");
