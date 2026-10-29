@@ -56,6 +56,8 @@ CREATE TABLE pecas (
   sku VARCHAR(80) UNIQUE,
   preco_site DECIMAL(10,2),
   estoque INT NOT NULL DEFAULT 0,
+  imagem_url VARCHAR(500),
+  ativo TINYINT(1) NOT NULL DEFAULT 1,
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -121,8 +123,12 @@ CREATE TABLE consultas_ia (
 CREATE TABLE pedidos (
   id INT AUTO_INCREMENT PRIMARY KEY,
   usuario_id INT NOT NULL,
+  subtotal DECIMAL(10,2) NOT NULL DEFAULT 0,
+  frete DECIMAL(10,2) NOT NULL DEFAULT 0,
   valor_total DECIMAL(10,2) NOT NULL DEFAULT 0,
-  status VARCHAR(40) NOT NULL DEFAULT 'criado',
+  forma_pagamento VARCHAR(30) NOT NULL DEFAULT 'a_definir',
+  endereco_entrega JSON,
+  status VARCHAR(40) NOT NULL DEFAULT 'aguardando_pagamento',
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_pedidos_usuario
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
