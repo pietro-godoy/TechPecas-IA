@@ -3,98 +3,120 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Buscar peças | Tech Peças IA</title>
+  <meta name="description" content="Busque peças pelo nome ou descreva o que está acontecendo com seu veículo.">
+  <title>Buscar peças | Tech Peças</title>
   <link rel="stylesheet" href="style.css">
   <script src="modal.js"></script>
 </head>
-<body class="buscar-body">
-  <a href="index.html" class="btn-back-top" title="Voltar para home">← Voltar</a>
+<body class="app-body">
+  <header class="site-header app-header">
+    <a class="brand" href="index.html">
+      <span class="brand-mark">TP</span>
+      <span class="brand-name">Tech Peças</span>
+    </a>
+    <nav class="site-nav">
+      <a href="index.html">Início</a>
+      <a href="buscar.html" class="active">Buscar peças</a>
+      <a href="garagem.html">Minha garagem</a>
+      <div id="navAuth" class="nav-auth">
+        <a href="login.html" id="nav-login" class="nav-login-link">Entrar</a>
+      </div>
+    </nav>
+  </header>
 
   <div id="loginRequired" class="login-required" style="display:none;">
     <div class="login-required-card">
-      <div class="login-lock">🔐</div>
-      <h1>Acesso à sua garagem</h1>
-      <p>Faça login para salvar veículos, pesquisas e usar a análise inteligente.</p>
+      <span class="login-required-tag">ACESSO À SUA CONTA</span>
+      <h1>Entre para continuar</h1>
+      <p>Assim conseguimos salvar seus veículos, histórico e preferências de busca.</p>
       <div class="login-required-actions">
-        <button onclick="window.location.href='login.html'" class="btn-primary">Fazer Login</button>
-        <button onclick="window.location.href='index.html'" class="btn-outline-light">Voltar</button>
+        <button onclick="window.location.href='login.html'" class="primary-cta button-reset">Entrar</button>
+        <button onclick="window.location.href='index.html'" class="secondary-cta button-reset">Voltar ao início</button>
       </div>
     </div>
   </div>
 
-  <main id="searchContent" class="search-page" style="display:none;">
-    <section class="search-hero">
+  <main id="searchContent" class="app-main" style="display:none;">
+    <section class="app-intro">
       <div>
-        <span class="eyebrow">TECH PEÇAS IA</span>
-        <h1>Encontre a peça certa para o seu carro</h1>
-        <p>Explique o problema do veículo ou pesquise diretamente pela peça que você já procura.</p>
+        <span class="section-label">BUSCAR PEÇAS</span>
+        <h1>Por onde você quer começar?</h1>
+        <p>Você pode contar o que está acontecendo com o carro ou ir direto para uma peça que já conhece.</p>
       </div>
-      <div id="userArea"></div>
+      <div id="userArea" class="app-user-area"></div>
     </section>
 
-    <section class="search-shell">
+    <section class="search-workspace">
       <div class="search-mode-tabs" role="tablist">
-        <button class="search-mode active" type="button" data-mode="problema">🤖 Meu carro está com problema</button>
-        <button class="search-mode" type="button" data-mode="peca">🔎 Já sei qual peça quero</button>
+        <button class="search-mode active" type="button" data-mode="problema">
+          <span class="mode-index">01</span>
+          <span><strong>Descrever um problema</strong><small>Não sei qual peça procurar</small></span>
+        </button>
+        <button class="search-mode" type="button" data-mode="peca">
+          <span class="mode-index">02</span>
+          <span><strong>Buscar por nome</strong><small>Já sei qual peça quero</small></span>
+        </button>
       </div>
 
       <div id="modeProblema" class="mode-panel active">
         <div class="panel-heading">
-          <h2>Conte o que está acontecendo</h2>
-          <p>A IA fará uma triagem e indicará componentes que podem estar relacionados ao sintoma.</p>
+          <span class="section-label dark-label">SEU VEÍCULO</span>
+          <h2>Conte o que você percebeu no carro.</h2>
+          <p>Vamos usar os dados do veículo e o sintoma descrito para indicar componentes que podem estar relacionados.</p>
         </div>
 
         <form id="diagnosticoForm" class="tech-form">
           <div class="form-grid vehicle-grid">
             <label>Marca
-              <input type="text" id="diagMarca" placeholder="Ex: Chevrolet" required>
+              <input type="text" id="diagMarca" placeholder="Chevrolet" required>
             </label>
             <label>Modelo
-              <input type="text" id="diagModelo" placeholder="Ex: Onix" required>
+              <input type="text" id="diagModelo" placeholder="Onix" required>
             </label>
             <label>Ano
               <input type="number" id="diagAno" min="1950" max="2100" placeholder="2022" required>
             </label>
             <label>Versão <span>(opcional)</span>
-              <input type="text" id="diagVersao" placeholder="Ex: LT 1.0 Turbo">
+              <input type="text" id="diagVersao" placeholder="LT 1.0 Turbo">
             </label>
           </div>
 
-          <label class="full-label">Descreva o problema
-            <textarea id="diagProblema" rows="5" placeholder="Ex: Quando piso no freio escuto um chiado e sinto uma leve vibração no pedal." required></textarea>
+          <label class="full-label">O que está acontecendo?
+            <textarea id="diagProblema" rows="5" placeholder="Ex.: Ao frear, escuto um chiado e sinto uma leve vibração no pedal." required></textarea>
           </label>
 
           <div class="form-actions">
-            <button type="submit" class="btn-primary action-button">Analisar com IA</button>
-            <span class="form-note">A análise é um auxílio e não substitui uma avaliação mecânica.</span>
+            <button type="submit" class="primary-cta button-reset">Ver peças relacionadas <span>→</span></button>
+            <span class="form-note">Use as sugestões como ponto de partida. A avaliação de um mecânico continua sendo a confirmação mais segura.</span>
           </div>
         </form>
       </div>
 
       <div id="modePeca" class="mode-panel">
         <div class="panel-heading">
-          <h2>Pesquise uma peça diretamente</h2>
-          <p>Procure no catálogo e, se quiser, filtre pelo seu veículo para reduzir resultados incompatíveis.</p>
+          <span class="section-label dark-label">BUSCA DIRETA</span>
+          <h2>Qual peça você procura?</h2>
+          <p>Digite o nome da peça. Se quiser, filtre pelo veículo para reduzir resultados incompatíveis.</p>
         </div>
 
         <form id="pecaForm" class="tech-form">
           <label class="full-label">Nome da peça
-            <input type="text" id="pecaTermo" placeholder="Ex: pastilha de freio" required>
+            <input type="text" id="pecaTermo" placeholder="Ex.: pastilha de freio" required>
           </label>
 
           <div class="filter-switch-row">
             <label class="check-line">
               <input type="checkbox" id="usarFiltroVeiculo">
-              Filtrar por veículo
+              <span>Usar dados do veículo</span>
             </label>
           </div>
 
           <div id="pecaVehicleFields" class="form-grid vehicle-grid compact-grid" style="display:none;">
             <label>Marca
-              <input type="text" id="pecaMarca" placeholder="Ex: Volkswagen">
+              <input type="text" id="pecaMarca" placeholder="Volkswagen">
             </label>
             <label>Modelo
-              <input type="text" id="pecaModelo" placeholder="Ex: Gol">
+              <input type="text" id="pecaModelo" placeholder="Gol">
             </label>
             <label>Ano
               <input type="number" id="pecaAno" min="1950" max="2100" placeholder="2015">
@@ -102,8 +124,8 @@
           </div>
 
           <div class="form-actions">
-            <button type="submit" class="btn-primary action-button">Buscar no catálogo</button>
-            <span class="form-note">Os preços reais dependem das ofertas cadastradas no sistema.</span>
+            <button type="submit" class="primary-cta button-reset">Buscar peças <span>→</span></button>
+            <span class="form-note">Preços e disponibilidade dependem das ofertas cadastradas no catálogo.</span>
           </div>
         </form>
       </div>
@@ -111,7 +133,7 @@
 
     <section id="loadingSpinner" class="loading-spinner tech-loading" style="display:none;">
       <div class="spinner"></div>
-      <p>Processando sua busca...</p>
+      <p>Buscando as melhores correspondências...</p>
     </section>
 
     <section id="resultadoArea" class="result-area" style="display:none;"></section>
@@ -119,10 +141,10 @@
     <section class="history-section tech-history">
       <div class="history-head">
         <div>
-          <span class="eyebrow dark">HISTÓRICO</span>
-          <h2>Suas últimas pesquisas</h2>
+          <span class="section-label dark-label">HISTÓRICO</span>
+          <h2>Buscas recentes</h2>
         </div>
-        <button id="clearHistory" class="btn-secondary" type="button">Limpar histórico</button>
+        <button id="clearHistory" class="secondary-cta button-reset" type="button">Limpar</button>
       </div>
       <ul id="historyList" class="history-list"></ul>
     </section>
