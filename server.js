@@ -16,21 +16,23 @@ const aiCache = new Map();
 function buildDbSslOptions() {
   if (process.env.DB_SSL !== 'true') return undefined;
 
+  const verifyCa = String(process.env.DB_SSL_VERIFY || '').trim().toLowerCase() === 'true';
+
+  if (!verifyCa) {
+    return { rejectUnauthorized: false };
+  }
+
   const caPath = process.env.DB_CA_PATH
     ? path.resolve(__dirname, process.env.DB_CA_PATH)
     : path.join(__dirname, 'ca.pem');
 
-  if (fs.existsSync(caPath)) {
-    return {
-      ca: fs.readFileSync(caPath),
-      rejectUnauthorized: true,
-      minVersion: 'TLSv1.2'
-    };
+  if (!fs.existsSync(caPath)) {
+    throw new Error('DB_SSL_VERIFY=true, mas o certificado CA não foi encontrado.');
   }
 
   return {
-    rejectUnauthorized: false,
-    minVersion: 'TLSv1.2'
+    ca: fs.readFileSync(caPath),
+    rejectUnauthorized: true
   };
 }
 
