@@ -149,8 +149,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (currentUsername) {
       // Usuário logado - mostrar nome e botão de sair
       navAuth.innerHTML = `
-        <span class="nav-user" style="color:#ffffff !important;">${currentUsername}</span>
-        <button id="navLogout" class="nav-logout" style="color:#ffffff !important;border-color:rgba(255,255,255,.65) !important;background:transparent !important;">Sair</button>
+        <span class="nav-user">${currentUsername}</span>
+        <button id="navLogout" class="nav-logout">Sair</button>
       `;
       
       const navLogout = document.getElementById("navLogout");
