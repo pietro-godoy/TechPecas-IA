@@ -149,12 +149,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (currentUsername) {
       // Usuário logado - mostrar nome e botão de sair
       navAuth.innerHTML = `
-        <span style="color: white; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
-          👤 ${currentUsername}
-        </span>
-        <button id="navLogout" class="btn-ghost" style="margin: 0; padding: 0.6rem 1.2rem;">
-          Sair
-        </button>
+        <span class="nav-user">${currentUsername}</span>
+        <button id="navLogout" class="nav-logout">Sair</button>
       `;
       
       const navLogout = document.getElementById("navLogout");
@@ -393,7 +389,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (userArea) {
     if (currentUsername) {
-      userArea.innerHTML = `<div style="display:flex;gap:10px;align-items:center;"><strong>Olá, ${currentUsername}</strong><button id="btnLogout2" class="btn-ghost" style="margin-left:8px">Sair</button></div>`;
+      userArea.innerHTML = `<div class="user-pill"><span>${currentUsername}</span><button id="btnLogout2" type="button">Sair</button></div>`;
       const btnLogout2 = document.getElementById("btnLogout2");
       btnLogout2.addEventListener("click", () => {
         logoutCurrentUser();
@@ -610,7 +606,7 @@ function adicionarAoCarrinho(id, nome) {
 }
 
 
-/* ===== TECH PECAS IA - FLUXO NOVO ===== */
+/* ===== TECH PECAS - FLUXO DE BUSCA ===== */
 function tpEscape(value) {
   return String(value == null ? '' : value)
     .replaceAll('&', '&amp;')
@@ -662,7 +658,7 @@ function tpRenderDiagnosis(result) {
 
   tpShowResult(
     '<div class="result-header">' +
-      '<span class="eyebrow dark">ANÁLISE ASSISTIDA</span>' +
+      '<span class="section-label dark-label">PEÇAS RELACIONADAS</span>' +
       '<h2>' + tpEscape(vehicle.marca || '') + ' ' + tpEscape(vehicle.modelo || '') + ' ' + tpEscape(vehicle.ano || '') + ' ' + tpEscape(vehicle.versao || '') + '</h2>' +
       '<p>' + tpEscape(analysis.resumo || 'Veja os componentes que podem estar relacionados ao problema informado.') + '</p>' +
     '</div>' +
@@ -695,7 +691,7 @@ function tpRenderParts(result) {
       '<h3>' + tpEscape(piece.nome || '') + '</h3>' +
       '<p class="part-meta">' + tpEscape(piece.fabricante || 'Fabricante não informado') + ' · ' + tpEscape(piece.categoria || 'Autopeça') + '</p>' +
       '<p class="part-description">' + tpEscape(piece.descricao || 'Sem descrição cadastrada.') + '</p>' +
-      '<div class="price-compare"><div><small>Tech Peças IA</small><strong>' + sitePrice + '</strong></div>' +
+      '<div class="price-compare"><div><small>Tech Peças</small><strong>' + sitePrice + '</strong></div>' +
       '<div><small>Melhor parceiro</small><strong>' + partnerPrice + '</strong></div></div>' +
       '<div class="part-actions">' +
       (piece.preco_site !== null && stock > 0 ? '<button class="btn-primary small-button" type="button" onclick="showInfo(\'O carrinho será implementado no próximo marco do protótipo.\', \'Compra no site\')">Comprar no site</button>' : '') +
@@ -746,7 +742,7 @@ async function tpRenderHistory() {
   }
 
   list.innerHTML = history.map(function(item) {
-    const label = item.tipo === 'problema' ? '🤖 Problema' : (item.tipo === 'peca' ? '🔎 Peça' : '🔍 Busca');
+    const label = item.tipo === 'problema' ? 'Sintoma' : (item.tipo === 'peca' ? '🔎 Peça' : '🔍 Busca');
     return '<li><span class="history-type">' + label + '</span>' +
       '<span class="history-term">' + tpEscape(item.termo || '') + '</span>' +
       '<time>' + new Date(item.data_busca).toLocaleString('pt-BR') + '</time></li>';
@@ -781,7 +777,7 @@ document.addEventListener('DOMContentLoaded', function() {
     diagForm.addEventListener('submit', async function(event) {
       event.preventDefault();
       const user = getCurrentUser();
-      if (!user) return showWarning('Faça login para usar a análise inteligente.');
+      if (!user) return showWarning('Faça login para analisar o problema do seu veículo.');
 
       const payload = {
         usuarioId: user.id,
@@ -796,7 +792,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return showWarning('Informe marca, modelo, ano e descreva o problema com um pouco mais de detalhe.');
       }
 
-      tpLoading(true, 'A IA está analisando o problema...');
+      tpLoading(true, 'Analisando o que pode estar relacionado...');
       const result = await apiCall('/diagnostico/analisar', { method: 'POST', body: JSON.stringify(payload) });
       tpLoading(false);
 
@@ -858,7 +854,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 
-/* ===== TECH PECAS IA - GARAGEM ===== */
+/* ===== TECH PECAS - GARAGEM ===== */
 function tpVehicleQueryString(vehicle) {
   const params = new URLSearchParams();
   if (vehicle.marca) params.set('marca', vehicle.marca);
@@ -947,7 +943,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const garageLink = document.createElement('a');
     garageLink.href = 'garagem.html';
     garageLink.className = 'garage-pill-link';
-    garageLink.textContent = '🚘 Minha garagem';
+    garageLink.textContent = 'Minha garagem';
     userArea.prepend(garageLink);
   }
 
