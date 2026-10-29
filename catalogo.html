@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Catálogo de peças do Tech Peças.">
+  <title>Catálogo | Tech Peças</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta name="theme-color" content="#0a0b0d">
+  <link rel="stylesheet" href="style.css">
+  <script src="modal.js"></script>
+</head>
+<body class="app-body">
+  <header class="site-header app-header">
+    <a class="brand" href="index.html"><span class="brand-mark">TP</span><span class="brand-name">Tech Peças</span></a>
+    <nav class="site-nav">
+      <a href="index.html">Início</a>
+      <a href="catalogo.html" class="active">Catálogo</a>
+      <a href="buscar.html">Buscar peças</a>
+      <a href="garagem.html">Minha garagem</a>
+      <a href="carrinho.html" class="cart-nav-link">Carrinho <span id="cartCount" class="cart-count">0</span></a>
+      <div id="navAuth" class="nav-auth"><a href="login.html" id="nav-login" class="nav-login-link">Entrar</a></div>
+    </nav>
+  </header>
+
+  <main class="store-page">
+    <section class="store-intro">
+      <span class="section-label">CATÁLOGO TECH PEÇAS</span>
+      <h1>Peças disponíveis para comprar aqui.</h1>
+      <p>Produtos do nosso próprio catálogo, com estoque e preço controlados pelo Tech Peças.</p>
+    </section>
+
+    <section class="catalog-toolbar">
+      <div class="catalog-search-wrap">
+        <input id="catalogSearch" type="search" placeholder="Buscar por peça, fabricante, categoria ou SKU">
+        <button id="catalogSearchBtn" class="primary-cta button-reset" type="button">Buscar</button>
+      </div>
+      <button id="catalogClearBtn" class="secondary-cta button-reset" type="button">Limpar</button>
+    </section>
+
+    <section id="catalogStatus" class="store-status" style="display:none;"></section>
+    <section id="catalogGrid" class="catalog-grid"></section>
+  </main>
+
+  <script src="script.js"></script>
+  <script src="loja.js"></script>
+</body>
+</html>
