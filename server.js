@@ -540,6 +540,317 @@ Regras:
   }
 });
 
+// -------------------- CATÁLOGO PRÓPRIO --------------------
+
+app.get('/api/catalogo', async (req, res) => {
+  const termo = normalizeText(req.query.termo);
+  const categoria = normalizeText(req.query.categoria);
+  const marca = normalizeText(req.query.marca);
+  const modelo = normalizeText(req.query.modelo);
+  const ano = Number(req.query.ano) || null;
+
+  try {
+    const where = ['p.ativo = 1'];
+    const params = [];
+
+    if (termo) {
+      const like = '%' + termo + '%';
+      where.push('(p.nome LIKE ? OR p.fabricante LIKE ? OR p.categoria LIKE ? OR p.sku LIKE ?)');
+      params.push(like, like, like, like);
+    }
+
+    if (categoria) {
+      where.push('LOWER(p.categoria) = LOWER(?)');
+      params.push(categoria);
+    }
+
+    if (marca && modelo && ano) {
+      where.push(`EXISTS (
+        SELECT 1 FROM compatibilidades c
+        WHERE c.peca_id = p.id
+          AND LOWER(c.marca) = LOWER(?)
+          AND LOWER(c.modelo) = LOWER(?)
+          AND ? BETWEEN c.ano_inicio AND c.ano_fim
+      )`);
+      params.push(marca, modelo, ano);
+    }
+
+    const [rows] = await pool.execute(
+      `SELECT p.id, p.nome, p.descricao, p.fabricante, p.categoria, p.sku,
+              p.preco_site, p.estoque, p.imagem_url
+       FROM pecas p
+       WHERE ${where.join(' AND ')}
+       ORDER BY CASE WHEN p.estoque > 0 THEN 0 ELSE 1 END,
+                p.nome ASC
+       LIMIT 100`,
+      params
+    );
+
+    return res.json({
+      ok: true,
+      produtos: rows.map((p) => ({
+        ...p,
+        preco_site: p.preco_site === null ? null : Number(p.preco_site),
+        estoque: Number(p.estoque || 0)
+      }))
+    });
+  } catch (error) {
+    console.error('Erro ao carregar catálogo:', error.message);
+    const precisaMigrar = error.code === 'ER_BAD_FIELD_ERROR';
+    return res.status(500).json({
+      ok: false,
+      msg: precisaMigrar
+        ? 'O banco ainda precisa receber a migração da loja.'
+        : 'Não foi possível carregar o catálogo.'
+    });
+  }
+});
+
+app.get('/api/catalogo/:id', async (req, res) => {
+  const pecaId = Number(req.params.id);
+  if (!pecaId) return res.status(400).json({ ok: false, msg: 'Produto inválido.' });
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, nome, descricao, fabricante, categoria, sku,
+              preco_site, estoque, imagem_url
+       FROM pecas
+       WHERE id = ? AND ativo = 1
+       LIMIT 1`,
+      [pecaId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ ok: false, msg: 'Produto não encontrado.' });
+    }
+
+    const [compatibilidades] = await pool.execute(
+      `SELECT marca, modelo, ano_inicio, ano_fim, observacao
+       FROM compatibilidades
+       WHERE peca_id = ?
+       ORDER BY marca, modelo, ano_inicio`,
+      [pecaId]
+    );
+
+    const produto = rows[0];
+    produto.preco_site = produto.preco_site === null ? null : Number(produto.preco_site);
+    produto.estoque = Number(produto.estoque || 0);
+
+    return res.json({ ok: true, produto, compatibilidades });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível carregar o produto.' });
+  }
+});
+
+// -------------------- PEDIDOS / CHECKOUT --------------------
+
+app.post('/api/pedidos', async (req, res) => {
+  const usuarioId = Number(req.body.usuarioId);
+  const itensRecebidos = Array.isArray(req.body.itens) ? req.body.itens : [];
+  const formaPagamento = normalizeText(req.body.formaPagamento).toLowerCase();
+  const endereco = req.body.endereco && typeof req.body.endereco === 'object' ? req.body.endereco : {};
+
+  const itens = itensRecebidos
+    .map((item) => ({
+      pecaId: Number(item.pecaId),
+      quantidade: Math.max(1, Math.min(99, Number(item.quantidade) || 1))
+    }))
+    .filter((item) => item.pecaId);
+
+  const pagamentoValido = ['pix', 'cartao'].includes(formaPagamento);
+  const enderecoValido = endereco.cep && endereco.logradouro && endereco.numero &&
+    endereco.cidade && endereco.estado;
+
+  if (!usuarioId || !itens.length || !pagamentoValido || !enderecoValido) {
+    return res.status(400).json({
+      ok: false,
+      msg: 'Usuário, itens, endereço e forma de pagamento são obrigatórios.'
+    });
+  }
+
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const ids = [...new Set(itens.map((item) => item.pecaId))];
+    const placeholders = ids.map(() => '?').join(',');
+
+    const [produtos] = await conn.query(
+      `SELECT id, nome, preco_site, estoque, ativo
+       FROM pecas
+       WHERE id IN (${placeholders})
+       FOR UPDATE`,
+      ids
+    );
+
+    const mapa = new Map(produtos.map((produto) => [Number(produto.id), produto]));
+    let subtotal = 0;
+
+    const itensCalculados = itens.map((item) => {
+      const produto = mapa.get(item.pecaId);
+
+      if (!produto || Number(produto.ativo) !== 1 || produto.preco_site === null) {
+        throw new Error('Produto indisponível: ' + item.pecaId);
+      }
+
+      if (Number(produto.estoque) < item.quantidade) {
+        throw new Error('Estoque insuficiente para ' + produto.nome);
+      }
+
+      const preco = Number(produto.preco_site);
+      subtotal += preco * item.quantidade;
+
+      return {
+        pecaId: item.pecaId,
+        quantidade: item.quantidade,
+        preco
+      };
+    });
+
+    const frete = 0;
+    const total = subtotal + frete;
+
+    const [pedidoResult] = await conn.execute(
+      `INSERT INTO pedidos
+       (usuario_id, subtotal, frete, valor_total, forma_pagamento, endereco_entrega, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        usuarioId,
+        subtotal.toFixed(2),
+        frete.toFixed(2),
+        total.toFixed(2),
+        formaPagamento,
+        JSON.stringify(endereco),
+        'aguardando_pagamento'
+      ]
+    );
+
+    const pedidoId = pedidoResult.insertId;
+
+    for (const item of itensCalculados) {
+      await conn.execute(
+        `INSERT INTO itens_pedido (pedido_id, peca_id, quantidade, preco_unitario)
+         VALUES (?, ?, ?, ?)`,
+        [pedidoId, item.pecaId, item.quantidade, item.preco.toFixed(2)]
+      );
+
+      await conn.execute(
+        'UPDATE pecas SET estoque = estoque - ? WHERE id = ?',
+        [item.quantidade, item.pecaId]
+      );
+    }
+
+    await conn.commit();
+
+    return res.json({
+      ok: true,
+      pedido: {
+        id: pedidoId,
+        subtotal,
+        frete,
+        total,
+        formaPagamento,
+        status: 'aguardando_pagamento'
+      }
+    });
+  } catch (error) {
+    await conn.rollback();
+    console.error('Erro ao criar pedido:', error.message);
+    return res.status(400).json({
+      ok: false,
+      msg: error.message.startsWith('Estoque insuficiente') || error.message.startsWith('Produto indisponível')
+        ? error.message
+        : 'Não foi possível criar o pedido.'
+    });
+  } finally {
+    conn.release();
+  }
+});
+
+app.get('/api/pedidos', async (req, res) => {
+  const usuarioId = Number(req.query.usuarioId);
+  if (!usuarioId) return res.status(400).json({ ok: false, msg: 'Usuário obrigatório.' });
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT p.id, p.subtotal, p.frete, p.valor_total, p.forma_pagamento,
+              p.status, p.criado_em,
+              COUNT(ip.id) AS total_itens,
+              GROUP_CONCAT(CONCAT(pc.nome, ' x', ip.quantidade) SEPARATOR ' • ') AS resumo_itens
+       FROM pedidos p
+       LEFT JOIN itens_pedido ip ON ip.pedido_id = p.id
+       LEFT JOIN pecas pc ON pc.id = ip.peca_id
+       WHERE p.usuario_id = ?
+       GROUP BY p.id
+       ORDER BY p.criado_em DESC
+       LIMIT 50`,
+      [usuarioId]
+    );
+
+    return res.json({
+      ok: true,
+      pedidos: rows.map((p) => ({
+        ...p,
+        subtotal: Number(p.subtotal || 0),
+        frete: Number(p.frete || 0),
+        valor_total: Number(p.valor_total || 0),
+        total_itens: Number(p.total_itens || 0)
+      }))
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível carregar seus pedidos.' });
+  }
+});
+
+app.get('/api/pedidos/:id', async (req, res) => {
+  const pedidoId = Number(req.params.id);
+  const usuarioId = Number(req.query.usuarioId);
+
+  if (!pedidoId || !usuarioId) {
+    return res.status(400).json({ ok: false, msg: 'Pedido e usuário são obrigatórios.' });
+  }
+
+  try {
+    const [pedidos] = await pool.execute(
+      `SELECT id, usuario_id, subtotal, frete, valor_total, forma_pagamento,
+              endereco_entrega, status, criado_em
+       FROM pedidos
+       WHERE id = ? AND usuario_id = ?
+       LIMIT 1`,
+      [pedidoId, usuarioId]
+    );
+
+    if (!pedidos.length) return res.status(404).json({ ok: false, msg: 'Pedido não encontrado.' });
+
+    const [itens] = await pool.execute(
+      `SELECT ip.peca_id, ip.quantidade, ip.preco_unitario,
+              p.nome, p.fabricante, p.sku, p.imagem_url
+       FROM itens_pedido ip
+       INNER JOIN pecas p ON p.id = ip.peca_id
+       WHERE ip.pedido_id = ?
+       ORDER BY ip.id`,
+      [pedidoId]
+    );
+
+    const pedido = pedidos[0];
+    pedido.subtotal = Number(pedido.subtotal || 0);
+    pedido.frete = Number(pedido.frete || 0);
+    pedido.valor_total = Number(pedido.valor_total || 0);
+
+    return res.json({
+      ok: true,
+      pedido,
+      itens: itens.map((item) => ({
+        ...item,
+        preco_unitario: Number(item.preco_unitario || 0)
+      }))
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível carregar o pedido.' });
+  }
+});
+
 // -------------------- OFERTAS EXTERNAS --------------------
 
 app.post('/api/ofertas-externas/pesquisar', async (req, res) => {
