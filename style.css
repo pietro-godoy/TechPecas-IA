@@ -5125,3 +5125,391 @@ body.search-request-active * {
     text-align: left;
   }
 }
+
+
+/* ===== TECH PECAS - ADMIN DASHBOARD V2 ===== */
+.admin-body {
+  margin: 0;
+  min-height: 100vh;
+  background: #eef0f3;
+  color: #17191d;
+}
+
+.admin-dashboard-shell {
+  min-height: 100vh;
+  grid-template-columns: 248px minmax(0, 1fr);
+  background: #eef0f3;
+}
+
+.admin-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 1.15rem .9rem;
+  display: flex;
+  flex-direction: column;
+  background: #101216;
+  border-right: 1px solid #24272d;
+  color: #fff;
+  z-index: 50;
+}
+
+.admin-sidebar-brand {
+  padding: .55rem .55rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: .72rem;
+  color: #fff;
+  text-decoration: none;
+  border-bottom: 1px solid #24272d;
+}
+
+.admin-sidebar-brand > span:last-child {
+  display: grid;
+  gap: .08rem;
+}
+
+.admin-sidebar-brand strong {
+  font-size: .88rem;
+  letter-spacing: -.02em;
+}
+
+.admin-sidebar-brand small {
+  color: #777c84;
+  font-size: .58rem;
+  font-weight: 750;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.admin-sidebar-label {
+  margin: 1.2rem .62rem .5rem;
+  color: #60656e;
+  font-size: .56rem;
+  font-weight: 850;
+  letter-spacing: .13em;
+}
+
+.admin-sidebar-label-secondary {
+  margin-top: 1.55rem;
+}
+
+.admin-sidebar-nav {
+  display: grid;
+  gap: .18rem;
+}
+
+.admin-sidebar-nav a {
+  min-height: 42px;
+  padding: .62rem .68rem;
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  border-radius: 9px;
+  color: #989da5;
+  text-decoration: none;
+  font-size: .73rem;
+  font-weight: 750;
+  transition: background .16s ease, color .16s ease;
+}
+
+.admin-sidebar-nav a:hover {
+  background: #191c21;
+  color: #fff;
+}
+
+.admin-sidebar-nav a.active {
+  background: #24272d;
+  color: #fff;
+}
+
+.admin-sidebar-nav a.active::after {
+  content: "";
+  width: 3px;
+  height: 18px;
+  margin-left: auto;
+  border-radius: 3px;
+  background: #c74750;
+}
+
+.admin-nav-icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #1b1e23;
+  color: #d6d8dc;
+  font-size: .72rem;
+}
+
+.admin-sidebar-footer {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid #24272d;
+}
+
+.admin-nav-auth {
+  display: grid !important;
+  gap: .4rem;
+}
+
+.admin-nav-auth a,
+.admin-nav-auth button {
+  width: 100%;
+  min-height: 38px;
+  padding: .55rem .68rem !important;
+  justify-content: flex-start !important;
+  border-radius: 8px !important;
+  background: #191c21 !important;
+  color: #c8cbd0 !important;
+  font-size: .68rem !important;
+  text-decoration: none;
+}
+
+.admin-workspace {
+  min-width: 0;
+}
+
+.admin-topbar {
+  min-height: 84px;
+  padding: 1rem clamp(1rem, 3vw, 2.25rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(255,255,255,.94);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid #dfe2e7;
+}
+
+.admin-topbar-kicker {
+  display: block;
+  margin-bottom: .18rem;
+  color: #8a8e95;
+  font-size: .55rem;
+  font-weight: 850;
+  letter-spacing: .12em;
+}
+
+.admin-topbar h1 {
+  margin: 0;
+  color: #17191d;
+  font-size: 1.25rem;
+  letter-spacing: -.035em;
+}
+
+.admin-topbar .admin-identity {
+  min-width: 165px;
+  padding: .58rem .75rem;
+  border: 1px solid #e1e3e7;
+  border-radius: 10px;
+  background: #f7f8f9;
+}
+
+.admin-topbar .admin-identity span {
+  color: #989ca2;
+}
+
+.admin-topbar .admin-identity strong {
+  color: #202329;
+  font-size: .8rem;
+}
+
+.admin-workspace-content {
+  width: min(100%, 1540px);
+  margin: 0 auto;
+  padding: 1.35rem clamp(1rem, 2.5vw, 2rem) 4rem;
+}
+
+.admin-dashboard-hero {
+  padding: 1.35rem 1.45rem;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  border: 1px solid #dfe2e7;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 25px rgba(20,24,30,.035);
+}
+
+.admin-dashboard-hero h2 {
+  max-width: 720px;
+  margin: .45rem 0 .38rem;
+  font-size: clamp(1.65rem, 3vw, 2.7rem);
+  line-height: 1;
+  letter-spacing: -.05em;
+}
+
+.admin-dashboard-hero p {
+  color: #7e8289;
+  font-size: .78rem;
+}
+
+.admin-hero-action {
+  flex: 0 0 auto;
+}
+
+.admin-dashboard-shell .admin-stats {
+  width: 100%;
+  margin: 1rem 0 0;
+  position: static;
+  grid-template-columns: repeat(5, minmax(0,1fr));
+}
+
+.admin-dashboard-shell .admin-stats article {
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.admin-dashboard-shell .admin-section {
+  width: 100%;
+  margin: 1rem 0 0;
+  padding: 1.15rem;
+  border-radius: 14px;
+  border-color: #dfe2e7;
+  box-shadow: 0 6px 20px rgba(20,24,30,.025);
+}
+
+.admin-section-description {
+  margin-top: .28rem;
+  color: #8c9096;
+  font-size: .7rem;
+  line-height: 1.45;
+}
+
+.admin-dashboard-shell .admin-section-head h2 {
+  font-size: 1.45rem;
+}
+
+.admin-dashboard-shell .admin-editor {
+  top: 100px;
+  border-radius: 12px;
+  background: #f6f7f8;
+  border-color: #e1e3e6;
+}
+
+.admin-dashboard-shell .admin-products-panel {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.admin-dashboard-shell .admin-list-toolbar {
+  background: #f6f7f8;
+}
+
+.admin-dashboard-shell .admin-product-row,
+.admin-dashboard-shell .admin-order-row {
+  background: #fff;
+}
+
+#adminDashboard,
+#adminPayments,
+#adminCatalog,
+#adminOrders {
+  scroll-margin-top: 104px;
+}
+
+@media (max-width: 1180px) {
+  .admin-dashboard-shell {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
+  .admin-dashboard-shell .admin-stats {
+    grid-template-columns: repeat(3, minmax(0,1fr));
+  }
+
+  .admin-product-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-dashboard-shell .admin-editor {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-dashboard-shell {
+    display: block !important;
+  }
+
+  .admin-sidebar {
+    position: static;
+    width: 100%;
+    height: auto;
+    padding: .7rem;
+  }
+
+  .admin-sidebar-brand {
+    padding-bottom: .7rem;
+  }
+
+  .admin-sidebar-label,
+  .admin-sidebar-label-secondary {
+    display: none;
+  }
+
+  .admin-sidebar-nav {
+    margin-top: .55rem;
+    display: flex;
+    gap: .3rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .admin-sidebar-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-sidebar-nav a {
+    flex: 0 0 auto;
+    min-height: 38px;
+  }
+
+  .admin-sidebar-nav a.active::after {
+    display: none;
+  }
+
+  .admin-sidebar-footer {
+    display: none;
+  }
+
+  .admin-topbar {
+    position: static;
+    min-height: auto;
+    padding: .9rem 1rem;
+  }
+
+  .admin-topbar .admin-identity {
+    min-width: 0;
+  }
+
+  .admin-workspace-content {
+    padding: 1rem .75rem 3rem;
+  }
+
+  .admin-dashboard-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-dashboard-shell .admin-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-dashboard-shell .admin-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
