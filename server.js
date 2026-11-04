@@ -117,6 +117,10 @@ async function ensureStoreSchema() {
     changes.push('pedidos.asaas_billing_type');
   }
 
+  if (await ensureColumn('pedidos', 'estoque_devolvido', 'TINYINT(1) NOT NULL DEFAULT 0')) {
+    changes.push('pedidos.estoque_devolvido');
+  }
+
   await pool.query(
     `CREATE TABLE IF NOT EXISTS asaas_webhook_eventos (
       event_id VARCHAR(120) PRIMARY KEY,
@@ -355,15 +359,115 @@ async function getOrCreateAsaasCustomer(user, payer, address) {
 function mapAsaasEventToOrderStatus(event) {
   if (['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'].includes(event)) return 'pago';
 
+  if (event === 'PAYMENT_AWAITING_RISK_ANALYSIS') return 'analise_risco';
+  if (event === 'PAYMENT_APPROVED_BY_RISK_ANALYSIS') return 'aguardando_pagamento';
+
   if ([
-    'PAYMENT_REFUNDED',
-    'PAYMENT_PARTIALLY_REFUNDED',
-    'PAYMENT_CHARGEBACK_REQUESTED',
-    'PAYMENT_CHARGEBACK_DISPUTE',
-    'PAYMENT_DELETED'
-  ].includes(event)) return 'cancelado';
+    'PAYMENT_CREDIT_CARD_CAPTURE_REFUSED',
+    'PAYMENT_REPROVED_BY_RISK_ANALYSIS',
+    'PAYMENT_CREDIT_CARD_THREE_D_SECURE_CHALLENGE_FAILED'
+  ].includes(event)) return 'pagamento_recusado';
+
+  if (event === 'PAYMENT_OVERDUE') return 'vencido';
+  if (event === 'PAYMENT_DELETED') return 'cancelado';
+  if (event === 'PAYMENT_RESTORED') return 'aguardando_pagamento';
+
+  if (event === 'PAYMENT_REFUND_IN_PROGRESS') return 'estorno_em_processamento';
+  if (event === 'PAYMENT_PARTIALLY_REFUNDED') return 'estornado_parcial';
+  if (event === 'PAYMENT_REFUNDED') return 'estornado';
+
+  if (event === 'PAYMENT_CHARGEBACK_REQUESTED') return 'chargeback';
+  if (event === 'PAYMENT_CHARGEBACK_DISPUTE') return 'chargeback_em_disputa';
+  if (event === 'PAYMENT_AWAITING_CHARGEBACK_REVERSAL') return 'chargeback_em_reversao';
 
   return null;
+}
+
+function shouldReleaseReservedStock(status) {
+  return ['pagamento_recusado', 'vencido', 'cancelado'].includes(status);
+}
+
+async function releaseOrderStock(conn, pedidoId) {
+  const [[pedido]] = await conn.execute(
+    'SELECT estoque_devolvido FROM pedidos WHERE id = ? FOR UPDATE',
+    [pedidoId]
+  );
+
+  if (!pedido || Number(pedido.estoque_devolvido) === 1) return false;
+
+  const [itens] = await conn.execute(
+    'SELECT peca_id, quantidade FROM itens_pedido WHERE pedido_id = ?',
+    [pedidoId]
+  );
+
+  for (const item of itens) {
+    await conn.execute(
+      'UPDATE pecas SET estoque = estoque + ? WHERE id = ?',
+      [Number(item.quantidade), Number(item.peca_id)]
+    );
+  }
+
+  await conn.execute(
+    'UPDATE pedidos SET estoque_devolvido = 1 WHERE id = ?',
+    [pedidoId]
+  );
+
+  return true;
+}
+
+async function reserveOrderStockAgain(conn, pedidoId) {
+  const [[pedido]] = await conn.execute(
+    'SELECT estoque_devolvido FROM pedidos WHERE id = ? FOR UPDATE',
+    [pedidoId]
+  );
+
+  if (!pedido) throw new Error('Pedido não encontrado.');
+  if (Number(pedido.estoque_devolvido) === 0) return true;
+
+  const [itens] = await conn.execute(
+    `SELECT ip.peca_id, ip.quantidade, p.nome, p.estoque, p.ativo
+     FROM itens_pedido ip
+     INNER JOIN pecas p ON p.id = ip.peca_id
+     WHERE ip.pedido_id = ?
+     FOR UPDATE`,
+    [pedidoId]
+  );
+
+  for (const item of itens) {
+    if (Number(item.ativo) !== 1 || Number(item.estoque) < Number(item.quantidade)) {
+      return false;
+    }
+  }
+
+  for (const item of itens) {
+    await conn.execute(
+      'UPDATE pecas SET estoque = estoque - ? WHERE id = ?',
+      [Number(item.quantidade), Number(item.peca_id)]
+    );
+  }
+
+  await conn.execute(
+    'UPDATE pedidos SET estoque_devolvido = 0 WHERE id = ?',
+    [pedidoId]
+  );
+
+  return true;
+}
+
+async function reconcileLatePaidStock(conn, pedidoId) {
+  const [[pedido]] = await conn.execute(
+    'SELECT estoque_devolvido FROM pedidos WHERE id = ? FOR UPDATE',
+    [pedidoId]
+  );
+
+  if (!pedido || Number(pedido.estoque_devolvido) === 0) {
+    return { ok: true, status: 'pago' };
+  }
+
+  const reserved = await reserveOrderStockAgain(conn, pedidoId);
+  return reserved
+    ? { ok: true, status: 'pago' }
+    : { ok: false, status: 'pago_revisar_estoque' };
 }
 
 function buildExternalSearchQuery({ termo, marca, modelo, ano }) {
@@ -1324,7 +1428,8 @@ app.post('/api/pagamentos/asaas/criar', requireUser, async (req, res) => {
   try {
     const [rows] = await pool.execute(
       `SELECT id, usuario_id, valor_total, forma_pagamento, endereco_entrega, status,
-              asaas_payment_id, asaas_invoice_url, asaas_status, asaas_billing_type
+              asaas_payment_id, asaas_invoice_url, asaas_status, asaas_billing_type,
+              estoque_devolvido
        FROM pedidos
        WHERE id = ? AND usuario_id = ?
        LIMIT 1`,
@@ -1340,13 +1445,17 @@ app.post('/api/pagamentos/asaas/criar', requireUser, async (req, res) => {
       ? JSON.parse(pedido.endereco_entrega || '{}')
       : (pedido.endereco_entrega || {});
 
-    if (pedido.asaas_payment_id) {
+    const retryableStatuses = ['pagamento_recusado', 'vencido', 'cancelado'];
+    const shouldRetry = pedido.asaas_payment_id && retryableStatuses.includes(pedido.status);
+
+    if (pedido.asaas_payment_id && !shouldRetry) {
       const response = {
         ok: true,
         pedidoId,
         paymentId: pedido.asaas_payment_id,
         billingType: pedido.asaas_billing_type,
         status: pedido.asaas_status,
+        orderStatus: pedido.status,
         invoiceUrl: pedido.asaas_invoice_url || null
       };
 
@@ -1364,6 +1473,48 @@ app.post('/api/pagamentos/asaas/criar', requireUser, async (req, res) => {
       }
 
       return res.json(response);
+    }
+
+    if (shouldRetry) {
+      const retryConn = await pool.getConnection();
+
+      try {
+        await retryConn.beginTransaction();
+        const stockAvailable = await reserveOrderStockAgain(retryConn, pedidoId);
+
+        if (!stockAvailable) {
+          await retryConn.rollback();
+          return res.status(409).json({
+            ok: false,
+            code: 'STOCK_CHANGED',
+            msg: 'O pagamento anterior não foi concluído e o estoque mudou. Revise o pedido antes de tentar novamente.'
+          });
+        }
+
+        await retryConn.execute(
+          `UPDATE pedidos
+           SET status = 'aguardando_pagamento',
+               asaas_payment_id = NULL,
+               asaas_invoice_url = NULL,
+               asaas_status = NULL,
+               asaas_billing_type = NULL
+           WHERE id = ?`,
+          [pedidoId]
+        );
+
+        await retryConn.commit();
+        pedido.asaas_payment_id = null;
+        pedido.asaas_invoice_url = null;
+        pedido.asaas_status = null;
+        pedido.asaas_billing_type = null;
+        pedido.status = 'aguardando_pagamento';
+        pedido.estoque_devolvido = 0;
+      } catch (error) {
+        await retryConn.rollback();
+        throw error;
+      } finally {
+        retryConn.release();
+      }
     }
 
     const customerId = await getOrCreateAsaasCustomer(req.user, payer, endereco);
@@ -1463,24 +1614,29 @@ app.post('/api/webhooks/asaas', async (req, res) => {
   const event = normalizeText(req.body.event);
   const payment = req.body.payment && typeof req.body.payment === 'object' ? req.body.payment : {};
   const paymentId = normalizeText(payment.id);
+  const externalReference = Number(payment.externalReference) || null;
 
   if (!eventId || !event) {
     return res.status(400).json({ ok: false, msg: 'Evento inválido.' });
   }
 
+  const conn = await pool.getConnection();
+
   try {
-    const [insert] = await pool.execute(
+    await conn.beginTransaction();
+
+    const [insert] = await conn.execute(
       `INSERT IGNORE INTO asaas_webhook_eventos (event_id, event_type, payment_id)
        VALUES (?, ?, ?)`,
       [eventId, event, paymentId || null]
     );
 
     if (!insert.affectedRows) {
+      await conn.commit();
       return res.json({ ok: true, duplicate: true });
     }
 
-    const localStatus = mapAsaasEventToOrderStatus(event);
-    const externalReference = Number(payment.externalReference) || null;
+    let pedido = null;
 
     if (paymentId || externalReference) {
       const where = [];
@@ -1496,24 +1652,51 @@ app.post('/api/webhooks/asaas', async (req, res) => {
         params.push(externalReference);
       }
 
+      const [rows] = await conn.execute(
+        `SELECT id, status, estoque_devolvido
+         FROM pedidos
+         WHERE ${where.join(' OR ')}
+         LIMIT 1
+         FOR UPDATE`,
+        params
+      );
+
+      pedido = rows[0] || null;
+    }
+
+    if (pedido) {
+      let localStatus = mapAsaasEventToOrderStatus(event);
+      const asaasStatus = normalizeText(payment.status) || event;
+
+      if (localStatus === 'pago') {
+        const reconciled = await reconcileLatePaidStock(conn, pedido.id);
+        localStatus = reconciled.status;
+      } else if (localStatus && shouldReleaseReservedStock(localStatus)) {
+        await releaseOrderStock(conn, pedido.id);
+      }
+
       const sets = ['asaas_status = ?'];
-      const setParams = [normalizeText(payment.status) || event];
+      const setParams = [asaasStatus];
 
       if (localStatus) {
         sets.push('status = ?');
         setParams.push(localStatus);
       }
 
-      await pool.execute(
-        `UPDATE pedidos SET ${sets.join(', ')} WHERE ${where.join(' OR ')}`,
-        [...setParams, ...params]
+      await conn.execute(
+        `UPDATE pedidos SET ${sets.join(', ')} WHERE id = ?`,
+        [...setParams, pedido.id]
       );
     }
 
+    await conn.commit();
     return res.json({ ok: true });
   } catch (error) {
+    await conn.rollback();
     console.error('Erro ao processar Webhook Asaas:', error.message);
     return res.status(500).json({ ok: false, msg: 'Erro ao processar Webhook.' });
+  } finally {
+    conn.release();
   }
 });
 
@@ -1560,10 +1743,18 @@ app.post('/api/admin/asaas/webhook', requireAdmin, async (req, res) => {
           'PAYMENT_RECEIVED',
           'PAYMENT_OVERDUE',
           'PAYMENT_DELETED',
+          'PAYMENT_RESTORED',
+          'PAYMENT_CREDIT_CARD_CAPTURE_REFUSED',
+          'PAYMENT_AWAITING_RISK_ANALYSIS',
+          'PAYMENT_APPROVED_BY_RISK_ANALYSIS',
+          'PAYMENT_REPROVED_BY_RISK_ANALYSIS',
+          'PAYMENT_CREDIT_CARD_THREE_D_SECURE_CHALLENGE_FAILED',
+          'PAYMENT_REFUND_IN_PROGRESS',
           'PAYMENT_REFUNDED',
           'PAYMENT_PARTIALLY_REFUNDED',
           'PAYMENT_CHARGEBACK_REQUESTED',
-          'PAYMENT_CHARGEBACK_DISPUTE'
+          'PAYMENT_CHARGEBACK_DISPUTE',
+          'PAYMENT_AWAITING_CHARGEBACK_REVERSAL'
         ],
         sendType: 'SEQUENTIALLY',
         apiVersion: 3
