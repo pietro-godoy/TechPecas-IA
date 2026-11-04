@@ -1047,8 +1047,22 @@ document.addEventListener('DOMContentLoaded', function() {
           apiCall('/ofertas-externas/pesquisar', { method: 'POST', body: JSON.stringify(payload) })
         ]);
 
-        if (externalResult?.ok && Array.isArray(externalResult.autoImportados) && externalResult.autoImportados.length) {
-          tpLoading(true, 'Adicionando novas opções ao catálogo...');
+        const createdNewCatalogItems =
+          externalResult?.ok &&
+          Array.isArray(externalResult.autoImportados) &&
+          externalResult.autoImportados.length;
+
+        const cleanedBroadSearch =
+          externalResult?.ok &&
+          externalResult.buscaAmpla === true;
+
+        if (createdNewCatalogItems || cleanedBroadSearch) {
+          tpLoading(
+            true,
+            createdNewCatalogItems
+              ? 'Adicionando novas opções ao catálogo...'
+              : 'Ajustando resultados do catálogo...'
+          );
 
           const refreshedPayload = {
             ...payload,
