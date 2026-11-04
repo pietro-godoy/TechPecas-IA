@@ -1290,7 +1290,24 @@ app.get('/api/admin/pedidos', requireAdmin, async (req, res) => {
 app.patch('/api/admin/pedidos/:id/status', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const status = normalizeText(req.body.status);
-  const permitidos = ['aguardando_pagamento', 'pago', 'preparando', 'enviado', 'concluido', 'cancelado'];
+  const permitidos = [
+    'aguardando_pagamento',
+    'analise_risco',
+    'pagamento_recusado',
+    'vencido',
+    'pago',
+    'pago_revisar_estoque',
+    'preparando',
+    'enviado',
+    'concluido',
+    'cancelado',
+    'estorno_em_processamento',
+    'estornado_parcial',
+    'estornado',
+    'chargeback',
+    'chargeback_em_disputa',
+    'chargeback_em_reversao'
+  ];
 
   if (!id || !permitidos.includes(status)) {
     return res.status(400).json({ ok: false, msg: 'Pedido ou status inválido.' });
@@ -1716,6 +1733,27 @@ app.post('/api/admin/asaas/webhook', requireAdmin, async (req, res) => {
     });
   }
 
+  const events = [
+    'PAYMENT_CREATED',
+    'PAYMENT_UPDATED',
+    'PAYMENT_CONFIRMED',
+    'PAYMENT_RECEIVED',
+    'PAYMENT_OVERDUE',
+    'PAYMENT_DELETED',
+    'PAYMENT_RESTORED',
+    'PAYMENT_CREDIT_CARD_CAPTURE_REFUSED',
+    'PAYMENT_AWAITING_RISK_ANALYSIS',
+    'PAYMENT_APPROVED_BY_RISK_ANALYSIS',
+    'PAYMENT_REPROVED_BY_RISK_ANALYSIS',
+    'PAYMENT_CREDIT_CARD_THREE_D_SECURE_CHALLENGE_FAILED',
+    'PAYMENT_REFUND_IN_PROGRESS',
+    'PAYMENT_REFUNDED',
+    'PAYMENT_PARTIALLY_REFUNDED',
+    'PAYMENT_CHARGEBACK_REQUESTED',
+    'PAYMENT_CHARGEBACK_DISPUTE',
+    'PAYMENT_AWAITING_CHARGEBACK_REVERSAL'
+  ];
+
   try {
     const webhookUrl = publicUrl + '/api/webhooks/asaas';
     const list = await asaasRequest('/webhooks?limit=100');
@@ -1723,45 +1761,35 @@ app.post('/api/admin/asaas/webhook', requireAdmin, async (req, res) => {
       ? list.data.find((item) => item.url === webhookUrl)
       : null;
 
-    if (existing) {
-      return res.json({ ok: true, created: false, webhook: existing });
+    const payload = {
+      name: 'Tech Pecas - Pagamentos',
+      url: webhookUrl,
+      email,
+      interrupted: false,
+      enabled: true,
+      authToken,
+      events,
+      sendType: 'SEQUENTIALLY'
+    };
+
+    if (existing?.id) {
+      const webhook = await asaasRequest('/webhooks/' + encodeURIComponent(existing.id), {
+        method: 'PUT',
+        body: payload
+      });
+
+      return res.json({ ok: true, created: false, updated: true, webhook });
     }
 
     const webhook = await asaasRequest('/webhooks', {
       method: 'POST',
       body: {
-        name: 'Tech Pecas - Pagamentos',
-        url: webhookUrl,
-        email,
-        interrupted: false,
-        enabled: true,
-        authToken,
-        events: [
-          'PAYMENT_CREATED',
-          'PAYMENT_UPDATED',
-          'PAYMENT_CONFIRMED',
-          'PAYMENT_RECEIVED',
-          'PAYMENT_OVERDUE',
-          'PAYMENT_DELETED',
-          'PAYMENT_RESTORED',
-          'PAYMENT_CREDIT_CARD_CAPTURE_REFUSED',
-          'PAYMENT_AWAITING_RISK_ANALYSIS',
-          'PAYMENT_APPROVED_BY_RISK_ANALYSIS',
-          'PAYMENT_REPROVED_BY_RISK_ANALYSIS',
-          'PAYMENT_CREDIT_CARD_THREE_D_SECURE_CHALLENGE_FAILED',
-          'PAYMENT_REFUND_IN_PROGRESS',
-          'PAYMENT_REFUNDED',
-          'PAYMENT_PARTIALLY_REFUNDED',
-          'PAYMENT_CHARGEBACK_REQUESTED',
-          'PAYMENT_CHARGEBACK_DISPUTE',
-          'PAYMENT_AWAITING_CHARGEBACK_REVERSAL'
-        ],
-        sendType: 'SEQUENTIALLY',
+        ...payload,
         apiVersion: 3
       }
     });
 
-    return res.json({ ok: true, created: true, webhook });
+    return res.json({ ok: true, created: true, updated: false, webhook });
   } catch (error) {
     console.error('Erro ao configurar Webhook Asaas:', error.message);
     return res.status(error.status && error.status < 500 ? error.status : 502).json({
