@@ -219,6 +219,136 @@ function storeRenderCart() {
   }).join('');
 }
 
+let storePendingOrderId = null;
+let storePaymentPollTimer = null;
+
+function storeOnlyDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function storeRenderPaymentResult(payment, pedidoId) {
+  const container = document.getElementById('paymentResult');
+  if (!container) return;
+
+  container.style.display = 'block';
+
+  if (payment.billingType === 'PIX') {
+    const pix = payment.pix || {};
+    const qrImage = pix.encodedImage
+      ? '<img class="pix-qr-image" src="data:image/png;base64,' + pix.encodedImage + '" alt="QR Code Pix">'
+      : '';
+
+    container.innerHTML =
+      '<div class="payment-success-head"><span class="section-label dark-label">PAGAMENTO</span>' +
+      '<h2>Pix gerado para o pedido #' + Number(pedidoId) + '</h2>' +
+      '<p>Escaneie o QR Code ou copie o código Pix abaixo.</p></div>' +
+      '<div class="pix-payment-box">' +
+        qrImage +
+        '<div class="pix-payment-details">' +
+          '<strong>Aguardando pagamento</strong>' +
+          (pix.expirationDate ? '<small>Expira em ' + tpEscape(new Date(pix.expirationDate).toLocaleString('pt-BR')) + '</small>' : '') +
+          (pix.payload
+            ? '<textarea id="pixPayload" readonly>' + tpEscape(pix.payload) + '</textarea>' +
+              '<button id="copyPixButton" type="button" class="secondary-cta button-reset">Copiar Pix</button>'
+            : '<p class="muted-text">QR Code criado, mas o código copia e cola não foi retornado.</p>') +
+        '</div>' +
+      '</div>' +
+      '<p id="paymentLiveStatus" class="payment-live-status">Aguardando confirmação do Asaas...</p>';
+
+    document.getElementById('copyPixButton')?.addEventListener('click', async () => {
+      const payload = document.getElementById('pixPayload')?.value || '';
+      if (!payload) return;
+
+      try {
+        await navigator.clipboard.writeText(payload);
+        showSuccess('Código Pix copiado.');
+      } catch {
+        const field = document.getElementById('pixPayload');
+        field?.select();
+        document.execCommand('copy');
+        showSuccess('Código Pix copiado.');
+      }
+    });
+
+    storeStartPaymentPolling(pedidoId);
+  } else {
+    const invoiceUrl = /^https?:\/\//i.test(payment.invoiceUrl || '') ? payment.invoiceUrl : '';
+
+    container.innerHTML =
+      '<div class="payment-success-head"><span class="section-label dark-label">PAGAMENTO SEGURO</span>' +
+      '<h2>Pedido #' + Number(pedidoId) + ' criado</h2>' +
+      '<p>Os dados do cartão serão preenchidos diretamente no ambiente seguro do Asaas.</p></div>' +
+      (invoiceUrl
+        ? '<a class="primary-cta payment-asaas-link" href="' + tpEscape(invoiceUrl) + '" target="_blank" rel="noopener noreferrer">Pagar com cartão no Asaas <span>↗</span></a>'
+        : '<p class="muted-text">A cobrança foi criada, mas o Asaas não retornou a página de pagamento.</p>') +
+      '<p id="paymentLiveStatus" class="payment-live-status">Aguardando confirmação do pagamento...</p>';
+
+    storeStartPaymentPolling(pedidoId);
+  }
+
+  requestAnimationFrame(() => {
+    container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
+
+function storeStopPaymentPolling() {
+  if (storePaymentPollTimer) {
+    clearInterval(storePaymentPollTimer);
+    storePaymentPollTimer = null;
+  }
+}
+
+function storeStartPaymentPolling(pedidoId) {
+  storeStopPaymentPolling();
+
+  let attempts = 0;
+  const maxAttempts = 36;
+
+  const check = async () => {
+    attempts += 1;
+    const result = await apiCall('/pagamentos/asaas/pedido/' + Number(pedidoId), { method: 'GET' });
+
+    if (result.ok && result.pedido) {
+      const statusEl = document.getElementById('paymentLiveStatus');
+
+      if (result.pedido.status === 'pago') {
+        if (statusEl) {
+          statusEl.textContent = 'Pagamento confirmado. Pedido pago.';
+          statusEl.classList.add('confirmed');
+        }
+        storeStopPaymentPolling();
+        return;
+      }
+
+      if (result.pedido.status === 'cancelado') {
+        if (statusEl) {
+          statusEl.textContent = 'Pagamento cancelado ou estornado.';
+          statusEl.classList.add('cancelled');
+        }
+        storeStopPaymentPolling();
+        return;
+      }
+    }
+
+    if (attempts >= maxAttempts) {
+      storeStopPaymentPolling();
+    }
+  };
+
+  check();
+  storePaymentPollTimer = setInterval(check, 5000);
+}
+
+async function storeCreateAsaasPayment(pedidoId, pagador) {
+  return apiCall('/pagamentos/asaas/criar', {
+    method: 'POST',
+    body: JSON.stringify({
+      pedidoId,
+      pagador
+    })
+  });
+}
+
 async function storeSubmitCheckout(event) {
   event.preventDefault();
 
@@ -229,12 +359,18 @@ async function storeSubmitCheckout(event) {
   }
 
   const cart = storeGetCart();
-  if (!cart.length) {
+  if (!cart.length && !storePendingOrderId) {
     showWarning('Seu carrinho está vazio.');
     return;
   }
 
   const formaPagamento = document.querySelector('input[name="formaPagamento"]:checked')?.value || 'pix';
+  const pagador = {
+    name: document.getElementById('checkoutNome')?.value.trim(),
+    cpfCnpj: storeOnlyDigits(document.getElementById('checkoutCpfCnpj')?.value),
+    email: document.getElementById('checkoutEmail')?.value.trim(),
+    mobilePhone: storeOnlyDigits(document.getElementById('checkoutCelular')?.value)
+  };
   const endereco = {
     cep: document.getElementById('checkoutCep')?.value.trim(),
     logradouro: document.getElementById('checkoutLogradouro')?.value.trim(),
@@ -244,38 +380,64 @@ async function storeSubmitCheckout(event) {
     estado: document.getElementById('checkoutEstado')?.value.trim().toUpperCase()
   };
 
-  const button = document.getElementById('checkoutSubmit');
-  if (button) {
-    button.disabled = true;
-    button.textContent = 'Criando pedido...';
-  }
-
-  const result = await apiCall('/pedidos', {
-    method: 'POST',
-    body: JSON.stringify({
-      usuarioId: user.id,
-      itens: cart.map((item) => ({ pecaId: item.pecaId, quantidade: item.quantidade })),
-      formaPagamento,
-      endereco
-    })
-  });
-
-  if (button) {
-    button.disabled = false;
-    button.innerHTML = 'Criar pedido <span>→</span>';
-  }
-
-  if (!result.ok) {
-    showError(result.msg || 'Não foi possível criar o pedido.');
+  if (!pagador.name || ![11, 14].includes(pagador.cpfCnpj.length)) {
+    showWarning('Informe o nome completo e um CPF/CNPJ válido para gerar a cobrança.');
     return;
   }
 
-  storeSaveCart([]);
-  showSuccess(
-    'Pedido #' + result.pedido.id + ' criado. O pagamento será conectado na próxima etapa.',
-    'Pedido criado',
-    () => { window.location.href = 'pedidos.html?pedido=' + encodeURIComponent(result.pedido.id); }
-  );
+  const button = document.getElementById('checkoutSubmit');
+  if (button) {
+    button.disabled = true;
+    button.innerHTML = '<span class="search-button-spinner" aria-hidden="true"></span><span>Gerando pagamento...</span>';
+  }
+
+  let pedidoId = storePendingOrderId;
+
+  try {
+    if (!pedidoId) {
+      const result = await apiCall('/pedidos', {
+        method: 'POST',
+        body: JSON.stringify({
+          usuarioId: user.id,
+          itens: cart.map((item) => ({ pecaId: item.pecaId, quantidade: item.quantidade })),
+          formaPagamento,
+          endereco
+        })
+      });
+
+      if (!result.ok) {
+        showError(result.msg || 'Não foi possível criar o pedido.');
+        return;
+      }
+
+      pedidoId = result.pedido.id;
+      storePendingOrderId = pedidoId;
+    }
+
+    const payment = await storeCreateAsaasPayment(pedidoId, pagador);
+
+    if (!payment.ok) {
+      if (button) {
+        button.innerHTML = 'Tentar pagamento novamente <span>→</span>';
+      }
+      showError(
+        'O pedido #' + pedidoId + ' foi criado, mas o pagamento não pôde ser gerado. ' +
+        (payment.msg || 'Tente novamente.')
+      );
+      return;
+    }
+
+    storeSaveCart([]);
+    storePendingOrderId = null;
+    storeRenderPaymentResult(payment, pedidoId);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      if (!storePendingOrderId) {
+        button.innerHTML = 'Criar pedido <span>→</span>';
+      }
+    }
+  }
 }
 
 function storeOrderStatus(status) {
@@ -334,6 +496,12 @@ async function storeLoadOrders() {
 
 document.addEventListener('DOMContentLoaded', () => {
   storeUpdateCartBadges();
+
+  const checkoutEmailField = document.getElementById('checkoutEmail');
+  const currentUserForCheckout = getCurrentUser();
+  if (checkoutEmailField && currentUserForCheckout?.email && !checkoutEmailField.value) {
+    checkoutEmailField.value = currentUserForCheckout.email;
+  }
 
   const catalogGrid = document.getElementById('catalogGrid');
   if (catalogGrid) {
