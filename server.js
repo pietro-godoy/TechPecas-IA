@@ -164,8 +164,6 @@ async function ensureStoreSchema() {
      WHERE auto_importado = 1 AND estoque <= 0`
   );
 
-  await cleanupBroadImportedProducts();
-
   await pool.query(
     `UPDATE pecas
      SET categoria = CASE
@@ -2233,7 +2231,14 @@ async function syncImportedNamesForSearch({ termo, marca, modelo, ano }) {
     });
 
     await pool.execute(
-      'UPDATE pecas SET nome = ? WHERE id = ?',
+      `UPDATE pecas
+       SET nome = ?,
+           ativo = 1,
+           estoque = CASE
+             WHEN estoque <= 0 THEN 8 + MOD(CRC32(COALESCE(sku, CONCAT('AUTO-', id))), 17)
+             ELSE estoque
+           END
+       WHERE id = ?`,
       [newName, rows[i].id]
     );
   }
@@ -2349,13 +2354,8 @@ app.post('/api/ofertas-externas/pesquisar', async (req, res) => {
     await syncImportedNamesForSearch({ termo, marca, modelo, ano });
 
     let autoImportados = [];
-    const buscaAmpla = isBroadCategorySearch(termo);
 
-    if (buscaAmpla) {
-      await deactivateBroadAutoImports(termo);
-    }
-
-    if (!buscaAmpla && result.configured && Array.isArray(result.products) && result.products.length) {
+    if (result.configured && Array.isArray(result.products) && result.products.length) {
       const hasCatalog = await hasActiveCatalogMatch({ termo, marca, modelo, ano });
 
       if (!hasCatalog) {
@@ -2374,7 +2374,6 @@ app.post('/api/ofertas-externas/pesquisar', async (req, res) => {
       termo,
       filtros: marca && modelo && ano ? { marca, modelo, ano } : null,
       autoImportados,
-      buscaAmpla,
       ...result
     });
   } catch (error) {
