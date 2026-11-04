@@ -168,6 +168,19 @@ async function ensureStoreSchema() {
      WHERE auto_importado = 1 AND estoque <= 0`
   );
 
+  await pool.query(
+    `UPDATE pecas
+     SET categoria = CASE
+       WHEN categoria IS NULL OR categoria = '' OR categoria = 'Sugestão automática' THEN 'Autopeças'
+       ELSE categoria
+     END,
+     fabricante = CASE
+       WHEN fabricante IS NULL OR fabricante = '' THEN 'Linha Tech Peças'
+       ELSE fabricante
+     END
+     WHERE auto_importado = 1`
+  );
+
   const adminUsername = String(process.env.ADMIN_USERNAME || '').trim();
   if (adminUsername) {
     await pool.execute(
@@ -2092,6 +2105,22 @@ function externalDraftSku(product) {
   return 'EXT-' + crypto.createHash('sha1').update(source).digest('hex').slice(0, 12).toUpperCase();
 }
 
+function inferImportedCategory(text) {
+  const value = normalizeText(text).toLowerCase();
+
+  if (/(pastilha|disco|tambor|freio|sapata)/.test(value)) return 'Freios';
+  if (/(amortecedor|bieleta|piv[oô]|terminal|suspens[aã]o|bandeja)/.test(value)) return 'Suspensão';
+  if (/(filtro|combust[ií]vel|óleo|oleo|ar condicionado|cabine)/.test(value)) return 'Filtros';
+  if (/(vela|bobina|igni[cç][aã]o|cabo de vela)/.test(value)) return 'Ignição';
+  if (/(correia|tensor|polia|motor|junta|bomba d.?[aá]gua)/.test(value)) return 'Motor';
+  if (/(farol|lanterna|l[aâ]mpada|lampada|led)/.test(value)) return 'Iluminação';
+  if (/(embreagem|c[aâ]mbio|cambio|transmiss[aã]o)/.test(value)) return 'Transmissão';
+  if (/(radiador|arrefecimento|termost[aá]tica|reservat[oó]rio)/.test(value)) return 'Arrefecimento';
+  if (/(bateria|alternador|motor de partida|el[eé]tric)/.test(value)) return 'Elétrica';
+
+  return 'Autopeças';
+}
+
 async function autoImportExternalDrafts({ termo, marca, modelo, ano, products }) {
   const candidates = (Array.isArray(products) ? products : [])
     .map((product) => ({
@@ -2114,10 +2143,11 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
     const sourceUrl = /^https?:\/\//i.test(product.productLink || '') ? product.productLink : null;
     const thumbnail = /^https?:\/\//i.test(product.thumbnail || '') ? product.thumbnail : null;
     const vehicleText = [marca, modelo, ano].filter(Boolean).join(' ');
+    const category = inferImportedCategory([termo, product.title].filter(Boolean).join(' '));
     const description =
-      'Peça automotiva disponível no catálogo Tech Peças' +
-      (vehicleText ? ' para pesquisa relacionada a ' + vehicleText : '') +
-      '. Produto selecionado para demonstração do projeto, com preço promocional aplicado sobre a referência de mercado.';
+      'Peça automotiva selecionada pela Tech Peças' +
+      (vehicleText ? ' para aplicação pesquisada em ' + vehicleText : '') +
+      '. Consulte as especificações do veículo e do fabricante antes da instalação.';
 
     const [result] = await pool.execute(
       `INSERT IGNORE INTO pecas
@@ -2128,7 +2158,7 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
         normalizeText(product.title) || termo,
         description,
         'Linha Tech Peças',
-        'Autopeça',
+        category,
         sku,
         suggestedPrice,
         demoStock,
@@ -2141,6 +2171,22 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
     );
 
     if (result.affectedRows) {
+      if (marca && modelo && ano) {
+        await pool.execute(
+          `INSERT INTO compatibilidades
+           (peca_id, marca, modelo, ano_inicio, ano_fim, observacao)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            result.insertId,
+            marca,
+            modelo,
+            Number(ano),
+            Number(ano),
+            'Compatibilidade cadastrada automaticamente a partir da busca.'
+          ]
+        );
+      }
+
       imported.push({
         id: result.insertId,
         nome: normalizeText(product.title) || termo,
