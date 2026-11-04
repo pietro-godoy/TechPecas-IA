@@ -805,8 +805,14 @@ function tpRenderParts(result, externalResult) {
       const sitePrice = piece.preco_site !== null ? tpMoney(piece.preco_site) : 'Consultar';
       const partnerPrice = piece.menor_preco_parceiro !== null ? tpMoney(piece.menor_preco_parceiro) : 'Sem oferta cadastrada';
       const stock = Number(piece.estoque) || 0;
+      const image = /^https?:\/\//i.test(piece.imagem_url || '') ? piece.imagem_url : '';
 
       return '<article class="part-card">' +
+        '<div class="part-card-media">' +
+          (image
+            ? '<img src="' + tpEscape(image) + '" alt="' + tpEscape(piece.nome || 'Produto') + '" loading="lazy">'
+            : '<div class="part-card-placeholder"><span>TP</span></div>') +
+        '</div>' +
         '<div class="part-card-top"><span class="part-rank">#' + (index + 1) + '</span>' +
         '<span class="stock-chip ' + (stock > 0 ? 'available' : '') + '">' +
         (stock > 0 ? stock + ' em estoque' : 'Sem estoque no site') + '</span></div>' +
