@@ -2105,6 +2105,55 @@ function externalDraftSku(product) {
   return 'EXT-' + crypto.createHash('sha1').update(source).digest('hex').slice(0, 12).toUpperCase();
 }
 
+function normalizeSearchIntent(value) {
+  return normalizeText(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isBroadCategorySearch(term) {
+  const value = normalizeSearchIntent(term);
+
+  const broadCategory = /\b(suspensao|freios?|motor|eletrica|eletrico|iluminacao|transmissao|cambio|arrefecimento|direcao|ignicao|filtros?|autopecas?|pecas?)\b/.test(value);
+
+  const specificPart = /\b(bieleta|bandeja|pivo|amortecedor|mola|coxim|terminal|barra axial|axial|rolamento|cubo|pastilha|disco|tambor|sapata|filtro de oleo|filtro de ar|filtro de combustivel|filtro de cabine|vela|bobina|correia|tensor|polia|junta|bomba dagua|bomba de agua|farol|lanterna|lampada|embreagem|radiador|valvula termostatica|bateria|alternador|motor de partida)\b/.test(value);
+
+  return broadCategory && !specificPart;
+}
+
+async function deactivateBroadAutoImports(term) {
+  const normalizedTerm = normalizeSearchIntent(term);
+  if (!isBroadCategorySearch(normalizedTerm)) return 0;
+
+  const [rows] = await pool.execute(
+    `SELECT id, auto_import_term
+     FROM pecas
+     WHERE auto_importado = 1 AND ativo = 1`
+  );
+
+  const ids = rows
+    .filter((row) => {
+      const original = normalizeSearchIntent(row.auto_import_term || '');
+      return original && isBroadCategorySearch(original);
+    })
+    .map((row) => Number(row.id))
+    .filter(Boolean);
+
+  if (!ids.length) return 0;
+
+  const placeholders = ids.map(() => '?').join(',');
+  const [result] = await pool.query(
+    `UPDATE pecas SET ativo = 0 WHERE id IN (${placeholders})`,
+    ids
+  );
+
+  return Number(result.affectedRows || 0);
+}
+
 function inferImportedCategory(text) {
   const value = normalizeText(text).toLowerCase();
 
@@ -2218,8 +2267,13 @@ app.post('/api/ofertas-externas/pesquisar', async (req, res) => {
     const result = await searchExternalProducts({ termo, marca, modelo, ano });
 
     let autoImportados = [];
+    const buscaAmpla = isBroadCategorySearch(termo);
 
-    if (result.configured && Array.isArray(result.products) && result.products.length) {
+    if (buscaAmpla) {
+      await deactivateBroadAutoImports(termo);
+    }
+
+    if (!buscaAmpla && result.configured && Array.isArray(result.products) && result.products.length) {
       const hasCatalog = await hasActiveCatalogMatch({ termo, marca, modelo, ano });
 
       if (!hasCatalog) {
@@ -2238,6 +2292,7 @@ app.post('/api/ofertas-externas/pesquisar', async (req, res) => {
       termo,
       filtros: marca && modelo && ano ? { marca, modelo, ano } : null,
       autoImportados,
+      buscaAmpla,
       ...result
     });
   } catch (error) {
