@@ -214,36 +214,43 @@ async function ensureStoreSchema() {
       [adminUsername]
     );
 
-    if (adminByName.length) {
-      await pool.execute(
-        "UPDATE usuarios SET papel = 'admin' WHERE id = ?",
-        [adminByName[0].id]
+    let adminId = adminByName[0]?.id || null;
+
+    if (!adminId) {
+      const [legacyAdmin] = await pool.execute(
+        "SELECT id FROM usuarios WHERE LOWER(username) = LOWER('Godoy') LIMIT 1"
       );
 
-      if (adminPassword) {
+      if (legacyAdmin.length) {
+        adminId = legacyAdmin[0].id;
+      } else {
+        const [existingAdmins] = await pool.execute(
+          "SELECT id FROM usuarios WHERE papel = 'admin' ORDER BY id ASC LIMIT 2"
+        );
+
+        if (existingAdmins.length === 1) {
+          adminId = existingAdmins[0].id;
+        }
+      }
+
+      if (adminId) {
         await pool.execute(
-          "UPDATE usuarios SET senha = ? WHERE id = ?",
-          [adminPassword, adminByName[0].id]
+          "UPDATE usuarios SET username = ?, papel = 'admin' WHERE id = ?",
+          [adminUsername, adminId]
         );
       }
     } else {
-      const [existingAdmins] = await pool.execute(
-        "SELECT id FROM usuarios WHERE papel = 'admin' ORDER BY id ASC LIMIT 2"
+      await pool.execute(
+        "UPDATE usuarios SET papel = 'admin' WHERE id = ?",
+        [adminId]
       );
+    }
 
-      if (existingAdmins.length === 1) {
-        await pool.execute(
-          "UPDATE usuarios SET username = ?, papel = 'admin' WHERE id = ?",
-          [adminUsername, existingAdmins[0].id]
-        );
-
-        if (adminPassword) {
-          await pool.execute(
-            "UPDATE usuarios SET senha = ? WHERE id = ?",
-            [adminPassword, existingAdmins[0].id]
-          );
-        }
-      }
+    if (adminId && adminPassword) {
+      await pool.execute(
+        "UPDATE usuarios SET senha = ? WHERE id = ?",
+        [adminPassword, adminId]
+      );
     }
   }
 
@@ -928,19 +935,55 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
+    const configuredAdminUsername = normalizeText(process.env.ADMIN_USERNAME);
+    const configuredAdminPassword = String(process.env.ADMIN_PASSWORD || '');
+
+    if (
+      configuredAdminUsername &&
+      username.toLowerCase() === configuredAdminUsername.toLowerCase()
+    ) {
+      const [adminByName] = await pool.execute(
+        'SELECT id FROM usuarios WHERE LOWER(username) = LOWER(?) LIMIT 1',
+        [configuredAdminUsername]
+      );
+
+      if (!adminByName.length) {
+        const [legacyAdmin] = await pool.execute(
+          "SELECT id FROM usuarios WHERE LOWER(username) = LOWER('Godoy') LIMIT 1"
+        );
+
+        if (legacyAdmin.length) {
+          await pool.execute(
+            "UPDATE usuarios SET username = ?, papel = 'admin' WHERE id = ?",
+            [configuredAdminUsername, legacyAdmin[0].id]
+          );
+        }
+      }
+
+      if (configuredAdminPassword) {
+        await pool.execute(
+          "UPDATE usuarios SET senha = ?, papel = 'admin' WHERE LOWER(username) = LOWER(?)",
+          [configuredAdminPassword, configuredAdminUsername]
+        );
+      }
+    }
+
     const [usuarios] = await pool.execute(
-      'SELECT id, username, email, papel FROM usuarios WHERE username = ? AND senha = ? LIMIT 1',
+      'SELECT id, username, email, papel FROM usuarios WHERE LOWER(username) = LOWER(?) AND senha = ? LIMIT 1',
       [username, password]
     );
 
     if (usuarios.length === 0) {
-      return res.status(401).json({ ok: false, msg: 'Usuário ou senh inválidos' });
+      return res.status(401).json({ ok: false, msg: 'Usuário ou senha inválidos' });
     }
 
     const usuario = usuarios[0];
-    const adminUsername = normalizeText(process.env.ADMIN_USERNAME);
 
-    if (adminUsername && usuario.username.toLowerCase() === adminUsername.toLowerCase() && usuario.papel !== 'admin') {
+    if (
+      configuredAdminUsername &&
+      usuario.username.toLowerCase() === configuredAdminUsername.toLowerCase() &&
+      usuario.papel !== 'admin'
+    ) {
       await pool.execute(
         "UPDATE usuarios SET papel = 'admin' WHERE id = ?",
         [usuario.id]
