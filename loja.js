@@ -311,21 +311,66 @@ function storeStartPaymentPolling(pedidoId) {
     if (result.ok && result.pedido) {
       const statusEl = document.getElementById('paymentLiveStatus');
 
-      if (result.pedido.status === 'pago') {
+      const status = result.pedido.status;
+
+      if (status === 'pago') {
         if (statusEl) {
           statusEl.textContent = 'Pagamento confirmado. Pedido pago.';
-          statusEl.classList.add('confirmed');
+          statusEl.className = 'payment-live-status confirmed';
         }
         storeStopPaymentPolling();
         return;
       }
 
-      if (result.pedido.status === 'cancelado') {
+      if (status === 'pago_revisar_estoque') {
         if (statusEl) {
-          statusEl.textContent = 'Pagamento cancelado ou estornado.';
-          statusEl.classList.add('cancelled');
+          statusEl.textContent = 'Pagamento confirmado, mas o estoque precisa ser revisado pela loja.';
+          statusEl.className = 'payment-live-status attention';
         }
         storeStopPaymentPolling();
+        return;
+      }
+
+      if (status === 'analise_risco') {
+        if (statusEl) {
+          statusEl.textContent = 'Pagamento em análise de segurança pelo Asaas.';
+          statusEl.className = 'payment-live-status attention';
+        }
+        return;
+      }
+
+      if (status === 'pagamento_recusado') {
+        if (statusEl) {
+          statusEl.textContent = 'Pagamento recusado. Você pode tentar novamente ou usar outra forma de pagamento.';
+          statusEl.className = 'payment-live-status cancelled';
+        }
+        storeStopPaymentPolling();
+        return;
+      }
+
+      if (status === 'vencido') {
+        if (statusEl) {
+          statusEl.textContent = 'A cobrança venceu sem confirmação de pagamento.';
+          statusEl.className = 'payment-live-status cancelled';
+        }
+        storeStopPaymentPolling();
+        return;
+      }
+
+      if (['cancelado', 'estornado', 'estornado_parcial', 'chargeback', 'chargeback_em_disputa', 'chargeback_em_reversao'].includes(status)) {
+        if (statusEl) {
+          statusEl.textContent = storeOrderStatus(status) + '.';
+          statusEl.className = 'payment-live-status cancelled';
+        }
+        storeStopPaymentPolling();
+        return;
+      }
+
+      if (status === 'estorno_em_processamento') {
+        if (statusEl) {
+          statusEl.textContent = 'Estorno em processamento.';
+          statusEl.className = 'payment-live-status attention';
+        }
         return;
       }
     }
@@ -443,11 +488,21 @@ async function storeSubmitCheckout(event) {
 function storeOrderStatus(status) {
   const labels = {
     aguardando_pagamento: 'Aguardando pagamento',
+    analise_risco: 'Em análise de segurança',
+    pagamento_recusado: 'Pagamento recusado',
+    vencido: 'Pagamento vencido',
     pago: 'Pago',
+    pago_revisar_estoque: 'Pago — revisar estoque',
     preparando: 'Preparando',
     enviado: 'Enviado',
     concluido: 'Concluído',
-    cancelado: 'Cancelado'
+    cancelado: 'Cancelado',
+    estorno_em_processamento: 'Estorno em processamento',
+    estornado_parcial: 'Estornado parcialmente',
+    estornado: 'Estornado',
+    chargeback: 'Chargeback recebido',
+    chargeback_em_disputa: 'Chargeback em disputa',
+    chargeback_em_reversao: 'Chargeback em reversão'
   };
   return labels[status] || status || 'Pedido';
 }
