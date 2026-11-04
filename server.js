@@ -1528,13 +1528,24 @@ app.post('/api/admin/pedidos/:id/estornar', requireAdmin, async (req, res) => {
       }
     );
 
-    await pool.execute(
-      `UPDATE pedidos
-       SET status = 'estorno_em_processamento',
-           asaas_status = ?
-       WHERE id = ?`,
-      [payment.status || 'REFUND_REQUESTED', pedidoId]
-    );
+    const refundConn = await pool.getConnection();
+    try {
+      await refundConn.beginTransaction();
+      await releaseOrderStock(refundConn, pedidoId);
+      await refundConn.execute(
+        `UPDATE pedidos
+         SET status = 'estorno_em_processamento',
+             asaas_status = ?
+         WHERE id = ?`,
+        [payment.status || 'REFUND_REQUESTED', pedidoId]
+      );
+      await refundConn.commit();
+    } catch (error) {
+      await refundConn.rollback();
+      throw error;
+    } finally {
+      refundConn.release();
+    }
 
     return res.json({
       ok: true,
@@ -1615,24 +1626,7 @@ app.post('/api/admin/pedidos/:id/cancelar', requireAdmin, async (req, res) => {
 app.patch('/api/admin/pedidos/:id/status', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const status = normalizeText(req.body.status);
-  const permitidos = [
-    'aguardando_pagamento',
-    'analise_risco',
-    'pagamento_recusado',
-    'vencido',
-    'pago',
-    'pago_revisar_estoque',
-    'preparando',
-    'enviado',
-    'concluido',
-    'cancelado',
-    'estorno_em_processamento',
-    'estornado_parcial',
-    'estornado',
-    'chargeback',
-    'chargeback_em_disputa',
-    'chargeback_em_reversao'
-  ];
+  const permitidos = ['preparando', 'enviado', 'concluido'];
 
   if (!id || !permitidos.includes(status)) {
     return res.status(400).json({ ok: false, msg: 'Pedido ou status inválido.' });
@@ -2427,9 +2421,8 @@ app.post('/api/pedidos/:id/cancelar', requireCustomer, async (req, res) => {
   }
 });
 
-app.get('/api/pedidos', async (req, res) => {
-  const usuarioId = Number(req.query.usuarioId);
-  if (!usuarioId) return res.status(400).json({ ok: false, msg: 'Usuário obrigatório.' });
+app.get('/api/pedidos', requireCustomer, async (req, res) => {
+  const usuarioId = Number(req.user.id);
 
   try {
     const [rows] = await pool.execute(
@@ -2462,12 +2455,12 @@ app.get('/api/pedidos', async (req, res) => {
   }
 });
 
-app.get('/api/pedidos/:id', async (req, res) => {
+app.get('/api/pedidos/:id', requireCustomer, async (req, res) => {
   const pedidoId = Number(req.params.id);
-  const usuarioId = Number(req.query.usuarioId);
+  const usuarioId = Number(req.user.id);
 
-  if (!pedidoId || !usuarioId) {
-    return res.status(400).json({ ok: false, msg: 'Pedido e usuário são obrigatórios.' });
+  if (!pedidoId) {
+    return res.status(400).json({ ok: false, msg: 'Pedido inválido.' });
   }
 
   try {
