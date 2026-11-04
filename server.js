@@ -206,11 +206,45 @@ async function ensureStoreSchema() {
   );
 
   const adminUsername = String(process.env.ADMIN_USERNAME || '').trim();
+  const adminPassword = String(process.env.ADMIN_PASSWORD || '');
+
   if (adminUsername) {
-    await pool.execute(
-      "UPDATE usuarios SET papel = 'admin' WHERE LOWER(username) = LOWER(?)",
+    const [adminByName] = await pool.execute(
+      "SELECT id FROM usuarios WHERE LOWER(username) = LOWER(?) LIMIT 1",
       [adminUsername]
     );
+
+    if (adminByName.length) {
+      await pool.execute(
+        "UPDATE usuarios SET papel = 'admin' WHERE id = ?",
+        [adminByName[0].id]
+      );
+
+      if (adminPassword) {
+        await pool.execute(
+          "UPDATE usuarios SET senha = ? WHERE id = ?",
+          [adminPassword, adminByName[0].id]
+        );
+      }
+    } else {
+      const [existingAdmins] = await pool.execute(
+        "SELECT id FROM usuarios WHERE papel = 'admin' ORDER BY id ASC LIMIT 2"
+      );
+
+      if (existingAdmins.length === 1) {
+        await pool.execute(
+          "UPDATE usuarios SET username = ?, papel = 'admin' WHERE id = ?",
+          [adminUsername, existingAdmins[0].id]
+        );
+
+        if (adminPassword) {
+          await pool.execute(
+            "UPDATE usuarios SET senha = ? WHERE id = ?",
+            [adminPassword, existingAdmins[0].id]
+          );
+        }
+      }
+    }
   }
 
   if (changes.length) {
