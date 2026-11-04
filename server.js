@@ -683,6 +683,7 @@ app.post('/api/auth/register', async (req, res) => {
       usuario: {
         id: result.insertId,
         username,
+        email: email || '',
         papel: 'cliente',
         token: await createSessionToken(result.insertId)
       }
