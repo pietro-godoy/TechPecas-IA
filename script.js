@@ -816,7 +816,9 @@ function tpRenderParts(result, externalResult) {
         '<div class="price-compare"><div><small>Tech Peças</small><strong>' + sitePrice + '</strong></div>' +
         '<div><small>Parceiros cadastrados</small><strong>' + partnerPrice + '</strong></div></div>' +
         '<div class="part-actions">' +
-        (piece.preco_site !== null && stock > 0 ? '<button class="btn-primary small-button" type="button" onclick="showInfo(\'O carrinho será implementado no próximo marco do protótipo.\', \'Compra no site\')">Comprar no site</button>' : '') +
+        (piece.preco_site !== null && stock > 0
+          ? '<button class="btn-primary small-button tp-add-cart" type="button" data-piece-id="' + Number(piece.id) + '">Adicionar ao carrinho</button>'
+          : '') +
         '<button class="btn-secondary small-button tp-offers" type="button" data-piece-id="' + Number(piece.id) + '">Ver parceiros (' + Number(piece.total_ofertas || 0) + ')</button>' +
         '</div><div id="offers-' + Number(piece.id) + '" class="offers-list"></div></article>';
     }).join('');
@@ -1099,6 +1101,35 @@ document.addEventListener('DOMContentLoaded', function() {
           externalStores.dataset.pageToken || '',
           externalStores.dataset.target || ''
         );
+        return;
+      }
+
+      const addCart = event.target.closest('.tp-add-cart');
+      if (addCart) {
+        const pieceId = Number(addCart.dataset.pieceId);
+        if (!pieceId) return;
+
+        const originalText = addCart.textContent;
+        addCart.disabled = true;
+        addCart.textContent = 'Adicionando...';
+
+        apiCall('/catalogo/' + pieceId, { method: 'GET' })
+          .then(function(productResult) {
+            if (!productResult.ok || !productResult.produto) {
+              showError(productResult.msg || 'Não foi possível carregar este produto.');
+              return;
+            }
+
+            if (typeof storeAddToCart === 'function') {
+              storeAddToCart(productResult.produto);
+            } else {
+              showError('O carrinho não está disponível nesta página.');
+            }
+          })
+          .finally(function() {
+            addCart.disabled = false;
+            addCart.textContent = originalText;
+          });
         return;
       }
 
