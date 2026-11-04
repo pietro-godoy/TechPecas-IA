@@ -158,6 +158,10 @@ async function ensureStoreSchema() {
     'UPDATE pedidos SET subtotal = valor_total WHERE subtotal = 0 AND valor_total > 0'
   );
 
+  await pool.query(
+    'UPDATE pecas SET ativo = 1 WHERE auto_importado = 1'
+  );
+
   const adminUsername = String(process.env.ADMIN_USERNAME || '').trim();
   if (adminUsername) {
     await pool.execute(
