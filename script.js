@@ -1082,7 +1082,8 @@ async function tpInitializeSearchGarageVehicle() {
     return null;
   }
 
-  const vehicle = result.veiculos[0];
+  const vehicle = tpPickActiveVehicle(user.id, result.veiculos) || result.veiculos[0];
+  tpSetSelectedVehicleId(user.id, vehicle.id);
   tpSearchGarageVehicle = vehicle;
   tpFillSearchVehicleFields(vehicle);
   tpRenderSearchGarageVehicle(vehicle);
@@ -1483,25 +1484,42 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 
+function tpSelectedVehicleStorageKey(userId) {
+  return 'techpecas_selected_vehicle_' + Number(userId || 0);
+}
+
+function tpGetSelectedVehicleId(userId) {
+  const value = localStorage.getItem(tpSelectedVehicleStorageKey(userId));
+  return Number(value || 0);
+}
+
+function tpSetSelectedVehicleId(userId, vehicleId) {
+  if (!userId || !vehicleId) return;
+  localStorage.setItem(tpSelectedVehicleStorageKey(userId), String(vehicleId));
+}
+
+function tpPickActiveVehicle(userId, vehicles) {
+  const list = Array.isArray(vehicles) ? vehicles : [];
+  if (!list.length) return null;
+
+  const selectedId = tpGetSelectedVehicleId(userId);
+  const selected = list.find((vehicle) => Number(vehicle.id) === selectedId);
+
+  return selected || list[0];
+}
+
 /* ===== TECH PECAS - HOME VEHICLE ===== */
-async function tpLoadHomeVehicle() {
+function tpRenderHomeVehicle(vehicle) {
   const nameEl = document.getElementById('homeVehicleName');
-  if (!nameEl) return;
+  if (!nameEl || !vehicle) return;
 
-  const user = getCurrentUser();
-  if (!user) return;
-
-  const result = await apiCall('/veiculos?usuarioId=' + encodeURIComponent(user.id), { method: 'GET' });
-  if (!result.ok || !Array.isArray(result.veiculos) || !result.veiculos.length) return;
-
-  const vehicle = result.veiculos[0];
   const labelEl = document.getElementById('homeVehicleLabel');
   const statusEl = document.getElementById('homeVehicleStatus');
   const brandEl = document.getElementById('homeVehicleBrand');
   const versionEl = document.getElementById('homeVehicleVersion');
 
   if (labelEl) labelEl.textContent = 'SEU VEÍCULO';
-  if (statusEl) statusEl.textContent = 'Salvo';
+  if (statusEl) statusEl.textContent = 'Ativo';
   if (brandEl) brandEl.textContent = vehicle.marca || 'Meu veículo';
 
   const model = vehicle.modelo || 'Veículo';
@@ -1513,6 +1531,56 @@ async function tpLoadHomeVehicle() {
   }
 }
 
+async function tpLoadHomeVehicle() {
+  const nameEl = document.getElementById('homeVehicleName');
+  if (!nameEl) return;
+
+  const user = getCurrentUser();
+  if (!user) return;
+
+  const result = await apiCall('/veiculos?usuarioId=' + encodeURIComponent(user.id), { method: 'GET' });
+  if (!result.ok || !Array.isArray(result.veiculos) || !result.veiculos.length) return;
+
+  const vehicles = result.veiculos;
+  let activeVehicle = tpPickActiveVehicle(user.id, vehicles);
+  if (!activeVehicle) return;
+
+  tpSetSelectedVehicleId(user.id, activeVehicle.id);
+  tpRenderHomeVehicle(activeVehicle);
+
+  const switcher = document.getElementById('homeVehicleSwitcher');
+  const select = document.getElementById('homeVehicleSelect');
+
+  if (!switcher || !select) return;
+
+  select.innerHTML =
+    vehicles.map((vehicle) => {
+      const label = [vehicle.marca, vehicle.modelo, vehicle.ano, vehicle.versao]
+        .filter(Boolean)
+        .join(' ');
+
+      return '<option value="' + Number(vehicle.id) + '"' +
+        (Number(vehicle.id) === Number(activeVehicle.id) ? ' selected' : '') +
+        '>' + tpEscape(label) + '</option>';
+    }).join('') +
+    '<option value="__garage__">+ Gerenciar garagem</option>';
+
+  switcher.style.display = 'grid';
+
+  select.addEventListener('change', function() {
+    if (select.value === '__garage__') {
+      window.location.href = 'garagem.html';
+      return;
+    }
+
+    const selected = vehicles.find((vehicle) => Number(vehicle.id) === Number(select.value));
+    if (!selected) return;
+
+    activeVehicle = selected;
+    tpSetSelectedVehicleId(user.id, selected.id);
+    tpRenderHomeVehicle(selected);
+  });
+}
 document.addEventListener('DOMContentLoaded', function() {
   tpLoadHomeVehicle();
 });
