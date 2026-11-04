@@ -214,7 +214,7 @@ function storeRenderCart() {
         '<span>' + Number(item.quantidade || 1) + '</span>' +
         '<button type="button" data-qty-plus="' + Number(item.pecaId) + '">+</button>' +
       '</div>' +
-      '<strong class="cart-item-price">' + storeMoney(Number(item.preco || 0) * Number(item.quantidade || 0)) + '</strong>' +
+      '<strong class="cart-item-price">' + storeMoney(Number(item.preco || 0)) + '</strong>' +
     '</article>';
   }).join('');
 }
