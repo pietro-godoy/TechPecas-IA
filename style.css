@@ -4790,3 +4790,45 @@ body.auth-page {
     max-height: 260px;
   }
 }
+
+
+/* ===== TECH PECAS - SEARCH LOADING ===== */
+body.search-request-active,
+body.search-request-active * {
+  cursor: wait !important;
+}
+
+.search-submit-loading {
+  min-width: 150px;
+  justify-content: center;
+  opacity: .92;
+  pointer-events: none;
+}
+
+.search-submit-loading:disabled {
+  cursor: wait !important;
+}
+
+.search-button-spinner {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  border: 2px solid rgba(255,255,255,.38);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: tpSearchSpin .7s linear infinite;
+}
+
+#resultadoArea {
+  scroll-margin-top: 96px;
+}
+
+@keyframes tpSearchSpin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-button-spinner {
+    animation-duration: 1.4s;
+  }
+}
