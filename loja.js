@@ -249,6 +249,7 @@ function storeResetCheckoutToken() {
 
 let storePendingOrderId = null;
 let storePaymentPollTimer = null;
+let storeOrdersPollTimer = null;
 
 function storeOnlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
@@ -601,7 +602,7 @@ function storeOrderStatus(status) {
   return labels[status] || status || 'Pedido';
 }
 
-async function storeLoadOrders() {
+async function storeLoadOrders(options = {}) {
   const container = document.getElementById('ordersList');
   if (!container) return;
 
@@ -611,11 +612,17 @@ async function storeLoadOrders() {
     return;
   }
 
-  container.innerHTML = '<div class="store-status">Carregando pedidos...</div>';
+  const silent = options.silent === true;
+  if (!silent) {
+    container.innerHTML = '<div class="store-status">Carregando pedidos...</div>';
+  }
+
   const result = await apiCall('/pedidos?usuarioId=' + encodeURIComponent(user.id), { method: 'GET' });
 
   if (!result.ok) {
-    container.innerHTML = '<div class="store-status">' + tpEscape(result.msg || 'Não foi possível carregar os pedidos.') + '</div>';
+    if (!silent) {
+      container.innerHTML = '<div class="store-status">' + tpEscape(result.msg || 'Não foi possível carregar os pedidos.') + '</div>';
+    }
     return;
   }
 
@@ -627,7 +634,7 @@ async function storeLoadOrders() {
 
   const highlight = new URLSearchParams(window.location.search).get('pedido');
 
-  container.innerHTML = orders.map((order) => {
+  const ordersHtml = orders.map((order) => {
     const active = String(order.id) === String(highlight);
     return '<article class="order-card' + (active ? ' highlighted' : '') + '">' +
       '<div class="order-card-top">' +
@@ -644,6 +651,35 @@ async function storeLoadOrders() {
         : '') +
     '</article>';
   }).join('');
+
+  if (container.innerHTML !== ordersHtml) {
+    container.innerHTML = ordersHtml;
+  }
+}
+
+function storeStopOrdersPolling() {
+  if (storeOrdersPollTimer) {
+    clearInterval(storeOrdersPollTimer);
+    storeOrdersPollTimer = null;
+  }
+}
+
+function storeStartOrdersPolling() {
+  if (!document.getElementById('ordersList')) return;
+
+  storeStopOrdersPolling();
+
+  storeOrdersPollTimer = setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      storeLoadOrders({ silent: true });
+    }
+  }, 5000);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && document.getElementById('ordersList')) {
+      storeLoadOrders({ silent: true });
+    }
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -725,5 +761,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('checkoutForm')?.addEventListener('submit', storeSubmitCheckout);
   }
 
-  storeLoadOrders();
+  if (document.getElementById('ordersList')) {
+    storeLoadOrders();
+    storeStartOrdersPolling();
+  }
 });
