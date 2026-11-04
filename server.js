@@ -2066,6 +2066,120 @@ app.post('/api/pedidos', requireUser, async (req, res) => {
   }
 });
 
+app.post('/api/pedidos/:id/cancelar', requireUser, async (req, res) => {
+  const pedidoId = Number(req.params.id);
+
+  if (!pedidoId) {
+    return res.status(400).json({ ok: false, msg: 'Pedido inválido.' });
+  }
+
+  const cancellableStatuses = ['aguardando_pagamento', 'pagamento_recusado', 'vencido'];
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, usuario_id, status, asaas_payment_id, estoque_devolvido
+       FROM pedidos
+       WHERE id = ? AND usuario_id = ?
+       LIMIT 1`,
+      [pedidoId, req.user.id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ ok: false, msg: 'Pedido não encontrado.' });
+    }
+
+    const pedido = rows[0];
+
+    if (pedido.status === 'cancelado') {
+      return res.json({ ok: true, pedidoId, status: 'cancelado', alreadyCancelled: true });
+    }
+
+    if (!cancellableStatuses.includes(pedido.status)) {
+      return res.status(409).json({
+        ok: false,
+        msg: 'Este pedido não pode mais ser cancelado pelo cliente.'
+      });
+    }
+
+    if (pedido.asaas_payment_id) {
+      try {
+        await asaasRequest('/payments/' + encodeURIComponent(pedido.asaas_payment_id), {
+          method: 'DELETE'
+        });
+      } catch (error) {
+        const message = String(error.message || '').toLowerCase();
+        const notFound = error.status === 404 || message.includes('not found') || message.includes('não encontrado');
+
+        if (!notFound) {
+          return res.status(error.status && error.status < 500 ? error.status : 502).json({
+            ok: false,
+            msg: 'Não foi possível cancelar a cobrança no Asaas. Atualize o pedido e tente novamente.'
+          });
+        }
+      }
+    }
+
+    const conn = await pool.getConnection();
+
+    try {
+      await conn.beginTransaction();
+
+      const [lockedRows] = await conn.execute(
+        `SELECT id, status, estoque_devolvido
+         FROM pedidos
+         WHERE id = ? AND usuario_id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [pedidoId, req.user.id]
+      );
+
+      if (!lockedRows.length) {
+        await conn.rollback();
+        return res.status(404).json({ ok: false, msg: 'Pedido não encontrado.' });
+      }
+
+      const locked = lockedRows[0];
+
+      if (['pago', 'pago_revisar_estoque', 'preparando', 'enviado', 'concluido'].includes(locked.status)) {
+        await conn.rollback();
+        return res.status(409).json({
+          ok: false,
+          msg: 'O pagamento deste pedido já foi confirmado e ele não pode mais ser cancelado por aqui.'
+        });
+      }
+
+      await releaseOrderStock(conn, pedidoId);
+
+      await conn.execute(
+        `UPDATE pedidos
+         SET status = 'cancelado',
+             asaas_status = COALESCE(asaas_status, 'CANCELLED')
+         WHERE id = ?`,
+        [pedidoId]
+      );
+
+      await conn.commit();
+
+      return res.json({
+        ok: true,
+        pedidoId,
+        status: 'cancelado'
+      });
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    console.error('Erro ao cancelar pedido:', error.message);
+    return res.status(500).json({
+      ok: false,
+      msg: 'Não foi possível cancelar o pedido agora.'
+    });
+  }
+});
+
 app.get('/api/pedidos', async (req, res) => {
   const usuarioId = Number(req.query.usuarioId);
   if (!usuarioId) return res.status(400).json({ ok: false, msg: 'Usuário obrigatório.' });
