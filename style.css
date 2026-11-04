@@ -5605,3 +5605,65 @@ body.search-request-active * {
   font-size: .67rem;
   line-height: 1.45;
 }
+
+
+/* ===== TECH PECAS - PEDIDOS POR STATUS ===== */
+.orders-status-group {
+  display: grid;
+  gap: .8rem;
+  margin-bottom: 1.4rem;
+}
+
+.orders-group-head {
+  padding: 0 .15rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.orders-group-head > strong {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 .55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: .7rem;
+}
+
+.pending-group .orders-group-head > strong {
+  background: #fff3db;
+  color: #9a6a14;
+}
+
+.paid-group .orders-group-head > strong {
+  background: #e8f6ee;
+  color: #237a4d;
+}
+
+.order-card-pending {
+  border-left: 4px solid #d6a23b !important;
+}
+
+.order-card-paid {
+  border-left: 4px solid #2d9a61 !important;
+  background: #fbfffc !important;
+}
+
+.order-status-title.paid {
+  color: #237a4d !important;
+}
+
+.order-status-title.pending {
+  color: #9a6a14 !important;
+}
+
+.order-card-paid .order-number {
+  color: #5b8f71 !important;
+}
+
+.order-card-paid.highlighted {
+  box-shadow: 0 0 0 2px rgba(45,154,97,.12) !important;
+}
