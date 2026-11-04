@@ -342,7 +342,9 @@ async function adminSetupAsaasWebhook() {
   showSuccess(
     result.created
       ? 'Webhook criado no Asaas Sandbox.'
-      : 'O Webhook do Tech Peças já estava configurado.',
+      : (result.updated
+          ? 'Webhook existente atualizado com os eventos mais recentes.'
+          : 'Webhook do Tech Peças já estava configurado.'),
     'Asaas'
   );
 }
