@@ -839,8 +839,12 @@ async function tpLoadExternalStores(productId, pageToken, targetId) {
   }
 
   const sorted = stores.slice().sort(function(a, b) {
-    const pa = a.extractedPrice === null ? Number.POSITIVE_INFINITY : Number(a.extractedPrice);
-    const pb = b.extractedPrice === null ? Number.POSITIVE_INFINITY : Number(b.extractedPrice);
+    const pa = a.extractedTotal !== null && a.extractedTotal !== undefined
+      ? Number(a.extractedTotal)
+      : (a.monthlyPaymentDuration ? Number.POSITIVE_INFINITY : (a.extractedPrice ?? Number.POSITIVE_INFINITY));
+    const pb = b.extractedTotal !== null && b.extractedTotal !== undefined
+      ? Number(b.extractedTotal)
+      : (b.monthlyPaymentDuration ? Number.POSITIVE_INFINITY : (b.extractedPrice ?? Number.POSITIVE_INFINITY));
     return pa - pb;
   });
 
@@ -855,8 +859,15 @@ async function tpLoadExternalStores(productId, pageToken, targetId) {
         '<div class="external-store-info"><strong>' + tpEscape(store.name || 'Loja') + '</strong>' +
           (store.tag ? '<small>' + tpEscape(store.tag) + '</small>' : '') +
           (store.shipping ? '<small>' + tpEscape(store.shipping) + '</small>' : '') +
+          (store.installmentsDescription ? '<small>' + tpEscape(store.installmentsDescription) + '</small>' : '') +
         '</div>' +
-        '<div class="external-store-price">' + tpEscape(store.price || store.total || 'Consultar') + '</div>' +
+        '<div class="external-store-price">' +
+          tpEscape(
+            store.total ||
+            ((!store.monthlyPaymentDuration && !store.installmentsDescription) ? store.price : null) ||
+            'Consultar total'
+          ) +
+        '</div>' +
         (link ? '<a href="' + tpEscape(link) + '" target="_blank" rel="noopener noreferrer">Comprar ↗</a>' : '<span class="muted-text">Sem link</span>') +
       '</div>';
     }).join('');
