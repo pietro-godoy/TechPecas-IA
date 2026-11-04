@@ -904,6 +904,16 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const usuario = usuarios[0];
+    const adminUsername = normalizeText(process.env.ADMIN_USERNAME);
+
+    if (adminUsername && usuario.username.toLowerCase() === adminUsername.toLowerCase() && usuario.papel !== 'admin') {
+      await pool.execute(
+        "UPDATE usuarios SET papel = 'admin' WHERE id = ?",
+        [usuario.id]
+      );
+      usuario.papel = 'admin';
+    }
+
     usuario.token = await createSessionToken(usuario.id);
 
     return res.json({ ok: true, msg: 'Login realizado com sucesso', usuario });
@@ -912,6 +922,40 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(500).json({ ok: false, msg: 'Erro ao fazer login.' });
   }
 });
+app.get('/api/auth/me', requireUser, async (req, res) => {
+  try {
+    const adminUsername = normalizeText(process.env.ADMIN_USERNAME);
+    let papel = req.user.papel;
+
+    if (
+      adminUsername &&
+      String(req.user.username || '').toLowerCase() === adminUsername.toLowerCase() &&
+      papel !== 'admin'
+    ) {
+      await pool.execute(
+        "UPDATE usuarios SET papel = 'admin' WHERE id = ?",
+        [req.user.id]
+      );
+      papel = 'admin';
+    }
+
+    return res.json({
+      ok: true,
+      usuario: {
+        id: Number(req.user.id),
+        username: req.user.username,
+        email: req.user.email || '',
+        papel
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      msg: 'Não foi possível validar sua sessão.'
+    });
+  }
+});
+
 
 // -------------------- VEICULOS SOLIDOS --------------------
 
