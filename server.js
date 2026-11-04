@@ -159,14 +159,12 @@ async function ensureStoreSchema() {
   );
 
   await pool.query(
-    'UPDATE pecas SET ativo = 1 WHERE auto_importado = 1'
-  );
-
-  await pool.query(
     `UPDATE pecas
      SET estoque = 8 + MOD(CRC32(COALESCE(sku, CONCAT('AUTO-', id))), 17)
      WHERE auto_importado = 1 AND estoque <= 0`
   );
+
+  await cleanupBroadImportedProducts();
 
   await pool.query(
     `UPDATE pecas
@@ -2123,6 +2121,29 @@ function isBroadCategorySearch(term) {
   const specificPart = /\b(bieleta|bandeja|pivo|amortecedor|mola|coxim|terminal|barra axial|axial|rolamento|cubo|pastilha|disco|tambor|sapata|filtro de oleo|filtro de ar|filtro de combustivel|filtro de cabine|vela|bobina|correia|tensor|polia|junta|bomba dagua|bomba de agua|farol|lanterna|lampada|embreagem|radiador|valvula termostatica|bateria|alternador|motor de partida)\b/.test(value);
 
   return broadCategory && !specificPart;
+}
+
+async function cleanupBroadImportedProducts() {
+  const [rows] = await pool.execute(
+    `SELECT id, auto_import_term
+     FROM pecas
+     WHERE auto_importado = 1 AND ativo = 1`
+  );
+
+  const ids = rows
+    .filter((row) => isBroadCategorySearch(row.auto_import_term || ''))
+    .map((row) => Number(row.id))
+    .filter(Boolean);
+
+  if (!ids.length) return 0;
+
+  const placeholders = ids.map(() => '?').join(',');
+  const [result] = await pool.query(
+    `UPDATE pecas SET ativo = 0 WHERE id IN (${placeholders})`,
+    ids
+  );
+
+  return Number(result.affectedRows || 0);
 }
 
 async function deactivateBroadAutoImports(term) {
