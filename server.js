@@ -66,6 +66,26 @@ async function ensureColumn(table, column, definition) {
   return true;
 }
 
+async function ensureIndex(table, indexName, columns, unique = false) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS total
+     FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND INDEX_NAME = ?`,
+    [table, indexName]
+  );
+
+  if (Number(rows[0]?.total || 0) > 0) return false;
+
+  await pool.query(
+    `CREATE ${unique ? 'UNIQUE ' : ''}INDEX \`${indexName}\`
+     ON \`${table}\` (${columns.map((column) => '\`' + column + '\`').join(', ')})`
+  );
+
+  return true;
+}
+
 async function ensureStoreSchema() {
   const changes = [];
 
@@ -143,6 +163,14 @@ async function ensureStoreSchema() {
 
   if (await ensureColumn('pedidos', 'estoque_devolvido', 'TINYINT(1) NOT NULL DEFAULT 0')) {
     changes.push('pedidos.estoque_devolvido');
+  }
+
+  if (await ensureColumn('pedidos', 'checkout_token', 'VARCHAR(80) NULL')) {
+    changes.push('pedidos.checkout_token');
+  }
+
+  if (await ensureIndex('pedidos', 'uq_pedidos_checkout_token', ['checkout_token'], true)) {
+    changes.push('pedidos.checkout_token.index');
   }
 
   await pool.query(
@@ -1853,8 +1881,9 @@ app.post('/api/admin/asaas/webhook', requireAdmin, async (req, res) => {
 
 // -------------------- PEDIDOS / CHECKOUT --------------------
 
-app.post('/api/pedidos', async (req, res) => {
-  const usuarioId = Number(req.body.usuarioId);
+app.post('/api/pedidos', requireUser, async (req, res) => {
+  const usuarioId = Number(req.user.id);
+  const checkoutToken = normalizeText(req.body.checkoutToken);
   const itensRecebidos = Array.isArray(req.body.itens) ? req.body.itens : [];
   const formaPagamento = normalizeText(req.body.formaPagamento).toLowerCase();
   const endereco = req.body.endereco && typeof req.body.endereco === 'object' ? req.body.endereco : {};
@@ -1870,11 +1899,39 @@ app.post('/api/pedidos', async (req, res) => {
   const enderecoValido = endereco.cep && endereco.logradouro && endereco.numero &&
     endereco.cidade && endereco.estado;
 
-  if (!usuarioId || !itens.length || !pagamentoValido || !enderecoValido) {
+  if (!itens.length || !pagamentoValido || !enderecoValido || checkoutToken.length < 12) {
     return res.status(400).json({
       ok: false,
-      msg: 'Usuário, itens, endereço e forma de pagamento são obrigatórios.'
+      msg: 'Itens, endereço, forma de pagamento e identificação do checkout são obrigatórios.'
     });
+  }
+
+  try {
+    const [existingOrders] = await pool.execute(
+      `SELECT id, subtotal, frete, valor_total, forma_pagamento, status
+       FROM pedidos
+       WHERE usuario_id = ? AND checkout_token = ?
+       LIMIT 1`,
+      [usuarioId, checkoutToken]
+    );
+
+    if (existingOrders.length) {
+      const existing = existingOrders[0];
+      return res.json({
+        ok: true,
+        duplicate: true,
+        pedido: {
+          id: Number(existing.id),
+          subtotal: Number(existing.subtotal || 0),
+          frete: Number(existing.frete || 0),
+          total: Number(existing.valor_total || 0),
+          formaPagamento: existing.forma_pagamento,
+          status: existing.status
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Erro ao verificar checkout existente:', error.message);
   }
 
   const conn = await pool.getConnection();
@@ -1922,8 +1979,8 @@ app.post('/api/pedidos', async (req, res) => {
 
     const [pedidoResult] = await conn.execute(
       `INSERT INTO pedidos
-       (usuario_id, subtotal, frete, valor_total, forma_pagamento, endereco_entrega, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (usuario_id, subtotal, frete, valor_total, forma_pagamento, endereco_entrega, status, checkout_token)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         usuarioId,
         subtotal.toFixed(2),
@@ -1931,7 +1988,8 @@ app.post('/api/pedidos', async (req, res) => {
         total.toFixed(2),
         formaPagamento,
         JSON.stringify(endereco),
-        'aguardando_pagamento'
+        'aguardando_pagamento',
+        checkoutToken
       ]
     );
 
@@ -1965,6 +2023,37 @@ app.post('/api/pedidos', async (req, res) => {
     });
   } catch (error) {
     await conn.rollback();
+
+    if (error.code === 'ER_DUP_ENTRY' && checkoutToken) {
+      try {
+        const [existingOrders] = await pool.execute(
+          `SELECT id, subtotal, frete, valor_total, forma_pagamento, status
+           FROM pedidos
+           WHERE usuario_id = ? AND checkout_token = ?
+           LIMIT 1`,
+          [usuarioId, checkoutToken]
+        );
+
+        if (existingOrders.length) {
+          const existing = existingOrders[0];
+          return res.json({
+            ok: true,
+            duplicate: true,
+            pedido: {
+              id: Number(existing.id),
+              subtotal: Number(existing.subtotal || 0),
+              frete: Number(existing.frete || 0),
+              total: Number(existing.valor_total || 0),
+              formaPagamento: existing.forma_pagamento,
+              status: existing.status
+            }
+          });
+        }
+      } catch (lookupError) {
+        console.error('Erro ao recuperar pedido duplicado:', lookupError.message);
+      }
+    }
+
     console.error('Erro ao criar pedido:', error.message);
     return res.status(400).json({
       ok: false,
