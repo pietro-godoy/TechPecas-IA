@@ -30,35 +30,19 @@
         </span>
       </a>
 
-      <div class="admin-sidebar-label">GERENCIAMENTO</div>
+      <div class="admin-sidebar-label">ADMINISTRAÇÃO</div>
       <nav class="admin-sidebar-nav">
         <a href="#adminDashboard" class="active">
           <span class="admin-nav-icon">⌂</span>
-          <span>Visão geral</span>
+          <span>Início</span>
         </a>
         <a href="#adminCatalog">
           <span class="admin-nav-icon">▦</span>
-          <span>Produtos</span>
+          <span>Catálogo</span>
         </a>
         <a href="#adminOrders">
           <span class="admin-nav-icon">≡</span>
           <span>Pedidos</span>
-        </a>
-        <a href="#adminPayments">
-          <span class="admin-nav-icon">◇</span>
-          <span>Pagamentos</span>
-        </a>
-      </nav>
-
-      <div class="admin-sidebar-label admin-sidebar-label-secondary">LOJA</div>
-      <nav class="admin-sidebar-nav">
-        <a href="index.html">
-          <span class="admin-nav-icon">↗</span>
-          <span>Ver site</span>
-        </a>
-        <a href="catalogo.html">
-          <span class="admin-nav-icon">□</span>
-          <span>Catálogo público</span>
         </a>
       </nav>
 
@@ -81,24 +65,12 @@
           <div>
             <span class="section-label dark-label">VISÃO GERAL</span>
             <h2>Gerencie a operação da Tech Peças.</h2>
-            <p>Acompanhe catálogo, estoque, pedidos e pagamentos em um só lugar.</p>
+            <p>Gerencie catálogo, usuários e pedidos em um só lugar.</p>
           </div>
           <a href="#adminCatalog" class="primary-cta admin-hero-action">Gerenciar catálogo <span>→</span></a>
         </section>
 
         <section id="adminStats" class="admin-stats"></section>
-
-        <section id="adminPayments" class="admin-section asaas-admin-section">
-          <div class="admin-section-head">
-            <div>
-              <span class="section-label dark-label">PAGAMENTOS</span>
-              <h2>Asaas Sandbox</h2>
-              <p class="admin-section-description">Integração usada para testar cobranças e atualizações de pagamento.</p>
-            </div>
-            <button id="asaasSetupWebhook" type="button" class="secondary-cta button-reset">Configurar Webhook</button>
-          </div>
-          <div id="asaasAdminStatus" class="asaas-admin-status">Verificando configuração...</div>
-        </section>
 
         <section id="adminCatalog" class="admin-section">
           <div class="admin-section-head">
@@ -184,7 +156,7 @@
             <div>
               <span class="section-label dark-label">VENDAS</span>
               <h2>Pedidos</h2>
-              <p class="admin-section-description">Acompanhe status de pagamento, preparação e entrega.</p>
+              <p class="admin-section-description">Acompanhe os pedidos dos usuários, pagamentos e andamento da entrega.</p>
             </div>
             <button id="adminRefreshOrders" type="button" class="secondary-cta button-reset">Atualizar</button>
           </div>
