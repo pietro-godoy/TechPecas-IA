@@ -25,4 +25,4 @@ jobs:
           name: techpecas-ia
           path: dist/techpecas-ia
           include-hidden-files: true
-          retention-days: 1
+          retention-days: 2
