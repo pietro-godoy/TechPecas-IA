@@ -126,15 +126,32 @@ function adminRenderProducts(filter = '') {
           '<span class="admin-status-chip ' + (Number(product.ativo) === 1 ? 'active' : 'inactive') + '">' +
             (Number(product.ativo) === 1 ? 'Ativo' : 'Inativo') +
           '</span>' +
+          (Number(product.auto_importado) === 1
+            ? '<span class="admin-import-chip">Importado da internet</span>'
+            : '') +
         '</div>' +
         '<p>' + tpEscape(product.fabricante || 'Sem fabricante') + ' · ' + tpEscape(product.categoria || 'Sem categoria') + '</p>' +
         '<div class="admin-product-meta">' +
           '<span>SKU ' + tpEscape(product.sku || '—') + '</span>' +
           '<span>' + Number(product.estoque || 0) + ' em estoque</span>' +
           '<span>' + Number(product.total_compatibilidades || 0) + ' compat.</span>' +
+          (Number(product.auto_importado) === 1 && product.preco_referencia !== null
+            ? '<span>Referência ' + adminMoney(product.preco_referencia) + '</span>'
+            : '') +
+          (Number(product.auto_importado) === 1 && product.origem_nome
+            ? '<span>Origem: ' + tpEscape(product.origem_nome) + '</span>'
+            : '') +
         '</div>' +
+        (Number(product.auto_importado) === 1 && /^https?:\/\//i.test(product.origem_url || '')
+          ? '<a class="admin-source-link" href="' + tpEscape(product.origem_url) + '" target="_blank" rel="noopener noreferrer">Ver oferta de referência ↗</a>'
+          : '') +
       '</div>' +
-      '<strong class="admin-product-price">' + (product.preco_site === null ? 'Consultar' : adminMoney(product.preco_site)) + '</strong>' +
+      '<div class="admin-product-price-block">' +
+        (Number(product.auto_importado) === 1 && product.preco_referencia !== null
+          ? '<small>-20% sugerido</small>'
+          : '') +
+        '<strong class="admin-product-price">' + (product.preco_site === null ? 'Consultar' : adminMoney(product.preco_site)) + '</strong>' +
+      '</div>' +
       '<div class="admin-product-actions">' +
         '<button type="button" data-admin-edit="' + Number(product.id) + '">Editar</button>' +
         '<button type="button" data-admin-toggle="' + Number(product.id) + '" data-next="' + (Number(product.ativo) === 1 ? 0 : 1) + '">' +
