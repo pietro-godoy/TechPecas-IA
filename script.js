@@ -1044,6 +1044,24 @@ document.addEventListener('DOMContentLoaded', function() {
           apiCall('/pecas/pesquisar', { method: 'POST', body: JSON.stringify(payload) }),
           apiCall('/ofertas-externas/pesquisar', { method: 'POST', body: JSON.stringify(payload) })
         ]);
+
+        if (externalResult?.ok && Array.isArray(externalResult.autoImportados) && externalResult.autoImportados.length) {
+          tpLoading(true, 'Adicionando novas opções ao catálogo...');
+
+          const refreshedPayload = {
+            ...payload,
+            usuarioId: null
+          };
+
+          const refreshedResult = await apiCall('/pecas/pesquisar', {
+            method: 'POST',
+            body: JSON.stringify(refreshedPayload)
+          });
+
+          if (refreshedResult.ok) {
+            result = refreshedResult;
+          }
+        }
       } finally {
         tpLoading(false);
         tpSetSearchBusy(partForm, false);
