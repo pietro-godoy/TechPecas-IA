@@ -76,6 +76,7 @@ function storeAddToCart(product) {
     });
   }
 
+  storeResetCheckoutToken();
   storeSaveCart(cart);
   showSuccess('Produto adicionado ao carrinho.', 'Carrinho atualizado');
 }
@@ -166,12 +167,14 @@ function storeSetQuantity(pecaId, quantity) {
 
   const max = Math.max(1, Number(item.estoque || 1));
   item.quantidade = Math.max(1, Math.min(max, Number(quantity) || 1));
+  storeResetCheckoutToken();
   storeSaveCart(cart);
   storeRenderCart();
 }
 
 function storeRemoveCartItem(pecaId) {
   const cart = storeGetCart().filter((item) => Number(item.pecaId) !== Number(pecaId));
+  storeResetCheckoutToken();
   storeSaveCart(cart);
   storeRenderCart();
 }
@@ -219,6 +222,31 @@ function storeRenderCart() {
   }).join('');
 }
 
+function storeCheckoutTokenKey() {
+  const user = getCurrentUser();
+  return user?.id ? 'techpecas_checkout_token_' + user.id : null;
+}
+
+function storeGetCheckoutToken() {
+  const key = storeCheckoutTokenKey();
+  if (!key) return '';
+
+  let token = sessionStorage.getItem(key);
+  if (token) return token;
+
+  token = (window.crypto && typeof window.crypto.randomUUID === 'function')
+    ? window.crypto.randomUUID()
+    : 'checkout-' + Date.now() + '-' + Math.random().toString(36).slice(2, 12);
+
+  sessionStorage.setItem(key, token);
+  return token;
+}
+
+function storeResetCheckoutToken() {
+  const key = storeCheckoutTokenKey();
+  if (key) sessionStorage.removeItem(key);
+}
+
 let storePendingOrderId = null;
 let storePaymentPollTimer = null;
 
@@ -231,6 +259,9 @@ function storeRenderPaymentResult(payment, pedidoId) {
   if (!container) return;
 
   container.style.display = 'block';
+
+  const checkoutForm = document.getElementById('checkoutForm');
+  if (checkoutForm) checkoutForm.style.display = 'none';
 
   if (payment.billingType === 'PIX') {
     const pix = payment.pix || {};
@@ -253,7 +284,11 @@ function storeRenderPaymentResult(payment, pedidoId) {
             : '<p class="muted-text">QR Code criado, mas o código copia e cola não foi retornado.</p>') +
         '</div>' +
       '</div>' +
-      '<p id="paymentLiveStatus" class="payment-live-status">Aguardando confirmação do Asaas...</p>';
+      '<p id="paymentLiveStatus" class="payment-live-status">Aguardando confirmação do Asaas...</p>' +
+      '<div class="payment-result-actions">' +
+        '<a class="primary-cta" href="pedidos.html?pedido=' + Number(pedidoId) + '">Acompanhar pedido <span>→</span></a>' +
+        '<a class="secondary-cta" href="catalogo.html">Continuar comprando</a>' +
+      '</div>';
 
     document.getElementById('copyPixButton')?.addEventListener('click', async () => {
       const payload = document.getElementById('pixPayload')?.value || '';
@@ -281,7 +316,11 @@ function storeRenderPaymentResult(payment, pedidoId) {
       (invoiceUrl
         ? '<a class="primary-cta payment-asaas-link" href="' + tpEscape(invoiceUrl) + '" target="_blank" rel="noopener noreferrer">Pagar com cartão no Asaas <span>↗</span></a>'
         : '<p class="muted-text">A cobrança foi criada, mas o Asaas não retornou a página de pagamento.</p>') +
-      '<p id="paymentLiveStatus" class="payment-live-status">Aguardando confirmação do pagamento...</p>';
+      '<p id="paymentLiveStatus" class="payment-live-status">Aguardando confirmação do pagamento...</p>' +
+      '<div class="payment-result-actions">' +
+        '<a class="secondary-cta" href="pedidos.html?pedido=' + Number(pedidoId) + '">Acompanhar pedido</a>' +
+        '<a class="secondary-cta" href="catalogo.html">Continuar comprando</a>' +
+      '</div>';
 
     storeStartPaymentPolling(pedidoId);
   }
@@ -319,6 +358,7 @@ function storeStartPaymentPolling(pedidoId) {
           statusEl.className = 'payment-live-status confirmed';
         }
         storePendingOrderId = null;
+        storeResetCheckoutToken();
         storeStopPaymentPolling();
         return;
       }
@@ -329,6 +369,7 @@ function storeStartPaymentPolling(pedidoId) {
           statusEl.className = 'payment-live-status attention';
         }
         storePendingOrderId = null;
+        storeResetCheckoutToken();
         storeStopPaymentPolling();
         return;
       }
@@ -432,6 +473,17 @@ async function storeSubmitCheckout(event) {
     return;
   }
 
+  if (!endereco.cep || !endereco.logradouro || !endereco.numero || !endereco.cidade || endereco.estado.length !== 2) {
+    showWarning('Preencha CEP, logradouro, número, cidade e estado antes de finalizar.');
+    return;
+  }
+
+  const checkoutToken = storeGetCheckoutToken();
+  if (!checkoutToken) {
+    showError('Não foi possível identificar este checkout. Atualize a página e tente novamente.');
+    return;
+  }
+
   const button = document.getElementById('checkoutSubmit');
   if (button) {
     button.disabled = true;
@@ -446,6 +498,7 @@ async function storeSubmitCheckout(event) {
         method: 'POST',
         body: JSON.stringify({
           usuarioId: user.id,
+          checkoutToken,
           itens: cart.map((item) => ({ pecaId: item.pecaId, quantidade: item.quantidade })),
           formaPagamento,
           endereco
@@ -482,7 +535,7 @@ async function storeSubmitCheckout(event) {
       button.disabled = false;
       button.innerHTML = storePendingOrderId
         ? 'Atualizar pagamento <span>→</span>'
-        : 'Criar pedido <span>→</span>';
+        : 'Finalizar pedido <span>→</span>';
     }
   }
 }
