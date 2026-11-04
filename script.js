@@ -155,14 +155,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (current?.papel === 'admin') {
     const page = (window.location.pathname.split('/').pop() || 'index.html').toLowerCase();
+    const adminPages = ['admin.html', 'admin-catalogo.html', 'admin-pedidos.html', 'login.html'];
 
-    if (page !== 'admin.html' && page !== 'login.html') {
+    if (!adminPages.includes(page)) {
       const target =
         page === 'catalogo.html'
-          ? 'admin.html#adminCatalog'
+          ? 'admin-catalogo.html'
           : page === 'pedidos.html'
-            ? 'admin.html#adminOrders'
-            : 'admin.html#adminDashboard';
+            ? 'admin-pedidos.html'
+            : 'admin.html';
 
       window.location.replace(target);
       return;
@@ -305,7 +306,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const loggedUser = getCurrentUser();
         showSuccess("Login realizado com sucesso!", "Bem-vindo!", () => {
           window.location.href = loggedUser?.papel === 'admin'
-            ? "admin.html#adminDashboard"
+            ? "admin.html"
             : "index.html";
         });
       } else {
