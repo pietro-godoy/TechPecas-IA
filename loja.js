@@ -649,8 +649,13 @@ async function storeLoadOrders(options = {}) {
         '<span>' + new Date(order.criado_em).toLocaleString('pt-BR') + '</span>' +
         '<span>' + (order.forma_pagamento === 'pix' ? 'Pix' : 'Cartão') + '</span>' +
       '</div>' +
-      (['pagamento_recusado','vencido','cancelado'].includes(order.status)
-        ? '<div class="order-retry-row"><a class="secondary-cta" href="carrinho.html?pedido=' + Number(order.id) + '">Tentar pagamento novamente</a></div>'
+      (['aguardando_pagamento','pagamento_recusado','vencido'].includes(order.status)
+        ? '<div class="order-actions-row">' +
+            (['pagamento_recusado','vencido'].includes(order.status)
+              ? '<a class="secondary-cta" href="carrinho.html?pedido=' + Number(order.id) + '">Tentar pagamento novamente</a>'
+              : '') +
+            '<button class="order-cancel-button" type="button" data-cancel-order="' + Number(order.id) + '">Cancelar pedido</button>' +
+          '</div>'
         : '') +
     '</article>';
   }
@@ -680,6 +685,40 @@ async function storeLoadOrders(options = {}) {
   if (container.innerHTML !== ordersHtml) {
     container.innerHTML = ordersHtml;
   }
+}
+
+async function storeCancelOrder(pedidoId, button) {
+  if (!pedidoId) return;
+
+  showConfirm(
+    'Deseja realmente cancelar o pedido #' + pedidoId + '? Se houver uma cobrança pendente, ela também será cancelada.',
+    async () => {
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Cancelando...';
+      }
+
+      const result = await apiCall('/pedidos/' + Number(pedidoId) + '/cancelar', {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Cancelar pedido';
+      }
+
+      if (!result.ok) {
+        showError(result.msg || 'Não foi possível cancelar o pedido.');
+        return;
+      }
+
+      showSuccess('Pedido #' + pedidoId + ' cancelado.', 'Pedido cancelado');
+      await storeLoadOrders({ silent: true });
+    },
+    null,
+    'Cancelar pedido'
+  );
 }
 
 function storeStopOrdersPolling() {
@@ -786,7 +825,14 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('checkoutForm')?.addEventListener('submit', storeSubmitCheckout);
   }
 
-  if (document.getElementById('ordersList')) {
+  const ordersList = document.getElementById('ordersList');
+  if (ordersList) {
+    ordersList.addEventListener('click', (event) => {
+      const cancelButton = event.target.closest('[data-cancel-order]');
+      if (!cancelButton) return;
+      storeCancelOrder(Number(cancelButton.dataset.cancelOrder), cancelButton);
+    });
+
     storeLoadOrders();
     storeStartOrdersPolling();
   }
