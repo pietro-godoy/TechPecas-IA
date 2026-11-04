@@ -634,11 +634,14 @@ async function storeLoadOrders(options = {}) {
 
   const highlight = new URLSearchParams(window.location.search).get('pedido');
 
-  const ordersHtml = orders.map((order) => {
+  function renderOrderCard(order) {
     const active = String(order.id) === String(highlight);
-    return '<article class="order-card' + (active ? ' highlighted' : '') + '">' +
+    const paid = ['pago','pago_revisar_estoque','preparando','enviado','concluido'].includes(order.status);
+
+    return '<article class="order-card ' + (paid ? 'order-card-paid' : 'order-card-pending') + (active ? ' highlighted' : '') + '">' +
       '<div class="order-card-top">' +
-        '<div><span class="order-number">PEDIDO #' + Number(order.id) + '</span><h2>' + storeOrderStatus(order.status) + '</h2></div>' +
+        '<div><span class="order-number">PEDIDO #' + Number(order.id) + '</span>' +
+        '<h2 class="order-status-title ' + (paid ? 'paid' : 'pending') + '">' + storeOrderStatus(order.status) + '</h2></div>' +
         '<strong>' + storeMoney(order.valor_total) + '</strong>' +
       '</div>' +
       '<p class="order-summary">' + tpEscape(order.resumo_itens || order.total_itens + ' item(ns)') + '</p>' +
@@ -650,7 +653,29 @@ async function storeLoadOrders(options = {}) {
         ? '<div class="order-retry-row"><a class="secondary-cta" href="carrinho.html?pedido=' + Number(order.id) + '">Tentar pagamento novamente</a></div>'
         : '') +
     '</article>';
-  }).join('');
+  }
+
+  const pendingOrders = orders.filter((order) =>
+    !['pago','pago_revisar_estoque','preparando','enviado','concluido'].includes(order.status)
+  );
+
+  const paidOrders = orders.filter((order) =>
+    ['pago','pago_revisar_estoque','preparando','enviado','concluido'].includes(order.status)
+  );
+
+  const ordersHtml =
+    (pendingOrders.length
+      ? '<section class="orders-status-group pending-group">' +
+          '<div class="orders-group-head"><span class="section-label dark-label">PENDENTES</span><strong>' + pendingOrders.length + '</strong></div>' +
+          pendingOrders.map(renderOrderCard).join('') +
+        '</section>'
+      : '') +
+    (paidOrders.length
+      ? '<section class="orders-status-group paid-group">' +
+          '<div class="orders-group-head"><span class="section-label dark-label">PAGOS</span><strong>' + paidOrders.length + '</strong></div>' +
+          paidOrders.map(renderOrderCard).join('') +
+        '</section>'
+      : '');
 
   if (container.innerHTML !== ordersHtml) {
     container.innerHTML = ordersHtml;
