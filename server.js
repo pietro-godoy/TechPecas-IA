@@ -1302,6 +1302,283 @@ app.get('/api/catalogo/:id', async (req, res) => {
   }
 });
 
+// -------------------- ASAAS / PAGAMENTOS --------------------
+
+app.get('/api/pagamentos/asaas/status', (req, res) => {
+  return res.json({
+    ok: true,
+    configured: asaasConfigured(),
+    environment: String(process.env.ASAAS_ENV || 'sandbox').toLowerCase()
+  });
+});
+
+app.post('/api/pagamentos/asaas/criar', requireUser, async (req, res) => {
+  const pedidoId = Number(req.body.pedidoId);
+  const payer = req.body.pagador && typeof req.body.pagador === 'object' ? req.body.pagador : {};
+
+  if (!pedidoId) {
+    return res.status(400).json({ ok: false, msg: 'Pedido inválido.' });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, usuario_id, valor_total, forma_pagamento, endereco_entrega, status,
+              asaas_payment_id, asaas_invoice_url, asaas_status, asaas_billing_type
+       FROM pedidos
+       WHERE id = ? AND usuario_id = ?
+       LIMIT 1`,
+      [pedidoId, req.user.id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ ok: false, msg: 'Pedido não encontrado.' });
+    }
+
+    const pedido = rows[0];
+    const endereco = typeof pedido.endereco_entrega === 'string'
+      ? JSON.parse(pedido.endereco_entrega || '{}')
+      : (pedido.endereco_entrega || {});
+
+    if (pedido.asaas_payment_id) {
+      const response = {
+        ok: true,
+        pedidoId,
+        paymentId: pedido.asaas_payment_id,
+        billingType: pedido.asaas_billing_type,
+        status: pedido.asaas_status,
+        invoiceUrl: pedido.asaas_invoice_url || null
+      };
+
+      if (pedido.asaas_billing_type === 'PIX') {
+        try {
+          const qr = await asaasRequest('/payments/' + encodeURIComponent(pedido.asaas_payment_id) + '/pixQrCode');
+          response.pix = {
+            encodedImage: qr.encodedImage || null,
+            payload: qr.payload || null,
+            expirationDate: qr.expirationDate || null
+          };
+        } catch (error) {
+          console.warn('Não foi possível recuperar QR Pix existente:', error.message);
+        }
+      }
+
+      return res.json(response);
+    }
+
+    const customerId = await getOrCreateAsaasCustomer(req.user, payer, endereco);
+    const billingType = pedido.forma_pagamento === 'cartao' ? 'CREDIT_CARD' : 'PIX';
+
+    const payment = await asaasRequest('/payments', {
+      method: 'POST',
+      timeout: billingType === 'CREDIT_CARD' ? 60000 : 30000,
+      body: {
+        customer: customerId,
+        billingType,
+        value: Number(pedido.valor_total),
+        dueDate: paymentDueDate(1),
+        description: 'Pedido #' + pedidoId + ' - Tech Pecas',
+        externalReference: String(pedidoId)
+      }
+    });
+
+    await pool.execute(
+      `UPDATE pedidos
+       SET asaas_payment_id = ?,
+           asaas_invoice_url = ?,
+           asaas_status = ?,
+           asaas_billing_type = ?
+       WHERE id = ?`,
+      [
+        payment.id || null,
+        payment.invoiceUrl || null,
+        payment.status || null,
+        billingType,
+        pedidoId
+      ]
+    );
+
+    const response = {
+      ok: true,
+      pedidoId,
+      paymentId: payment.id || null,
+      billingType,
+      status: payment.status || null,
+      invoiceUrl: payment.invoiceUrl || null
+    };
+
+    if (billingType === 'PIX' && payment.id) {
+      const qr = await asaasRequest('/payments/' + encodeURIComponent(payment.id) + '/pixQrCode');
+      response.pix = {
+        encodedImage: qr.encodedImage || null,
+        payload: qr.payload || null,
+        expirationDate: qr.expirationDate || null
+      };
+    }
+
+    return res.json(response);
+  } catch (error) {
+    console.error('Erro Asaas ao criar cobrança:', error.message);
+    return res.status(error.status && error.status < 500 ? error.status : 502).json({
+      ok: false,
+      msg: error.message || 'Não foi possível gerar o pagamento no Asaas.'
+    });
+  }
+});
+
+app.get('/api/pagamentos/asaas/pedido/:id', requireUser, async (req, res) => {
+  const pedidoId = Number(req.params.id);
+  if (!pedidoId) return res.status(400).json({ ok: false, msg: 'Pedido inválido.' });
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, status, asaas_status, asaas_payment_id, asaas_invoice_url, asaas_billing_type
+       FROM pedidos
+       WHERE id = ? AND usuario_id = ?
+       LIMIT 1`,
+      [pedidoId, req.user.id]
+    );
+
+    if (!rows.length) return res.status(404).json({ ok: false, msg: 'Pedido não encontrado.' });
+
+    return res.json({ ok: true, pedido: rows[0] });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível consultar o pagamento.' });
+  }
+});
+
+app.post('/api/webhooks/asaas', async (req, res) => {
+  const configuredToken = normalizeText(process.env.ASAAS_WEBHOOK_TOKEN);
+  const receivedToken = normalizeText(req.headers['asaas-access-token']);
+
+  if (!configuredToken) {
+    return res.status(503).json({ ok: false, msg: 'Webhook Asaas não configurado.' });
+  }
+
+  if (!receivedToken || receivedToken !== configuredToken) {
+    return res.status(401).json({ ok: false, msg: 'Token de Webhook inválido.' });
+  }
+
+  const eventId = normalizeText(req.body.id);
+  const event = normalizeText(req.body.event);
+  const payment = req.body.payment && typeof req.body.payment === 'object' ? req.body.payment : {};
+  const paymentId = normalizeText(payment.id);
+
+  if (!eventId || !event) {
+    return res.status(400).json({ ok: false, msg: 'Evento inválido.' });
+  }
+
+  try {
+    const [insert] = await pool.execute(
+      `INSERT IGNORE INTO asaas_webhook_eventos (event_id, event_type, payment_id)
+       VALUES (?, ?, ?)`,
+      [eventId, event, paymentId || null]
+    );
+
+    if (!insert.affectedRows) {
+      return res.json({ ok: true, duplicate: true });
+    }
+
+    const localStatus = mapAsaasEventToOrderStatus(event);
+    const externalReference = Number(payment.externalReference) || null;
+
+    if (paymentId || externalReference) {
+      const where = [];
+      const params = [];
+
+      if (paymentId) {
+        where.push('asaas_payment_id = ?');
+        params.push(paymentId);
+      }
+
+      if (externalReference) {
+        where.push('id = ?');
+        params.push(externalReference);
+      }
+
+      const sets = ['asaas_status = ?'];
+      const setParams = [normalizeText(payment.status) || event];
+
+      if (localStatus) {
+        sets.push('status = ?');
+        setParams.push(localStatus);
+      }
+
+      await pool.execute(
+        `UPDATE pedidos SET ${sets.join(', ')} WHERE ${where.join(' OR ')}`,
+        [...setParams, ...params]
+      );
+    }
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('Erro ao processar Webhook Asaas:', error.message);
+    return res.status(500).json({ ok: false, msg: 'Erro ao processar Webhook.' });
+  }
+});
+
+app.post('/api/admin/asaas/webhook', requireAdmin, async (req, res) => {
+  if (!asaasConfigured()) {
+    return res.status(400).json({ ok: false, msg: 'ASAAS_API_KEY ainda não foi configurada.' });
+  }
+
+  const publicUrl = normalizeText(process.env.APP_PUBLIC_URL).replace(/\/$/, '');
+  const email = normalizeText(process.env.ASAAS_WEBHOOK_EMAIL);
+  const authToken = normalizeText(process.env.ASAAS_WEBHOOK_TOKEN);
+
+  if (!publicUrl || !email || authToken.length < 32) {
+    return res.status(400).json({
+      ok: false,
+      msg: 'Configure APP_PUBLIC_URL, ASAAS_WEBHOOK_EMAIL e ASAAS_WEBHOOK_TOKEN (mínimo 32 caracteres).'
+    });
+  }
+
+  try {
+    const webhookUrl = publicUrl + '/api/webhooks/asaas';
+    const list = await asaasRequest('/webhooks?limit=100');
+    const existing = Array.isArray(list.data)
+      ? list.data.find((item) => item.url === webhookUrl)
+      : null;
+
+    if (existing) {
+      return res.json({ ok: true, created: false, webhook: existing });
+    }
+
+    const webhook = await asaasRequest('/webhooks', {
+      method: 'POST',
+      body: {
+        name: 'Tech Pecas - Pagamentos',
+        url: webhookUrl,
+        email,
+        interrupted: false,
+        enabled: true,
+        authToken,
+        events: [
+          'PAYMENT_CREATED',
+          'PAYMENT_UPDATED',
+          'PAYMENT_CONFIRMED',
+          'PAYMENT_RECEIVED',
+          'PAYMENT_OVERDUE',
+          'PAYMENT_DELETED',
+          'PAYMENT_REFUNDED',
+          'PAYMENT_PARTIALLY_REFUNDED',
+          'PAYMENT_CHARGEBACK_REQUESTED',
+          'PAYMENT_CHARGEBACK_DISPUTE'
+        ],
+        sendType: 'SEQUENTIALLY',
+        apiVersion: 3
+      }
+    });
+
+    return res.json({ ok: true, created: true, webhook });
+  } catch (error) {
+    console.error('Erro ao configurar Webhook Asaas:', error.message);
+    return res.status(error.status && error.status < 500 ? error.status : 502).json({
+      ok: false,
+      msg: error.message || 'Não foi possível configurar o Webhook no Asaas.'
+    });
+  }
+});
+
 // -------------------- PEDIDOS / CHECKOUT --------------------
 
 app.post('/api/pedidos', async (req, res) => {
