@@ -989,10 +989,112 @@ async function tpRenderHistory() {
   }).join('');
 }
 
+let tpSearchGarageVehicle = null;
+
+function tpSearchVehicleLabel(vehicle) {
+  return [vehicle?.marca, vehicle?.modelo, vehicle?.ano, vehicle?.versao]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function tpFillSearchVehicleFields(vehicle) {
+  if (!vehicle) return;
+
+  const diagMarca = document.getElementById('diagMarca');
+  const diagModelo = document.getElementById('diagModelo');
+  const diagAno = document.getElementById('diagAno');
+  const diagVersao = document.getElementById('diagVersao');
+  const pecaMarca = document.getElementById('pecaMarca');
+  const pecaModelo = document.getElementById('pecaModelo');
+  const pecaAno = document.getElementById('pecaAno');
+  const filter = document.getElementById('usarFiltroVeiculo');
+
+  if (diagMarca) diagMarca.value = vehicle.marca || '';
+  if (diagModelo) diagModelo.value = vehicle.modelo || '';
+  if (diagAno) diagAno.value = vehicle.ano || '';
+  if (diagVersao) diagVersao.value = vehicle.versao || '';
+  if (pecaMarca) pecaMarca.value = vehicle.marca || '';
+  if (pecaModelo) pecaModelo.value = vehicle.modelo || '';
+  if (pecaAno) pecaAno.value = vehicle.ano || '';
+  if (filter) filter.checked = true;
+}
+
+function tpRenderSearchGarageVehicle(vehicle) {
+  const label = tpSearchVehicleLabel(vehicle);
+  if (!label) return;
+
+  const content =
+    '<div class="search-garage-vehicle-main">' +
+      '<span class="search-garage-dot"></span>' +
+      '<div><small>VEÍCULO DA GARAGEM</small><strong>' + tpEscape(label) + '</strong></div>' +
+    '</div>' +
+    '<a href="garagem.html">Trocar veículo</a>';
+
+  const diagSummary = document.getElementById('diagGarageVehicle');
+  const pecaSummary = document.getElementById('pecaGarageVehicle');
+  const diagManual = document.getElementById('diagManualVehicleFields');
+  const pecaFilterRow = document.getElementById('pecaFilterSwitchRow');
+  const pecaFields = document.getElementById('pecaVehicleFields');
+
+  if (diagSummary) {
+    diagSummary.innerHTML = content;
+    diagSummary.style.display = 'flex';
+  }
+
+  if (pecaSummary) {
+    pecaSummary.innerHTML = content;
+    pecaSummary.style.display = 'flex';
+  }
+
+  if (diagManual) diagManual.style.display = 'none';
+  if (pecaFilterRow) pecaFilterRow.style.display = 'none';
+  if (pecaFields) pecaFields.style.display = 'none';
+}
+
+async function tpInitializeSearchGarageVehicle() {
+  const diagForm = document.getElementById('diagnosticoForm');
+  const partForm = document.getElementById('pecaForm');
+  if (!diagForm && !partForm) return null;
+
+  const params = new URLSearchParams(window.location.search);
+  const queryVehicle = {
+    marca: params.get('marca') || '',
+    modelo: params.get('modelo') || '',
+    ano: params.get('ano') || '',
+    versao: params.get('versao') || ''
+  };
+
+  if (queryVehicle.marca && queryVehicle.modelo && queryVehicle.ano) {
+    tpSearchGarageVehicle = queryVehicle;
+    tpFillSearchVehicleFields(queryVehicle);
+    tpRenderSearchGarageVehicle(queryVehicle);
+    return queryVehicle;
+  }
+
+  const user = getCurrentUser();
+  if (!user) return null;
+
+  const result = await apiCall('/veiculos?usuarioId=' + encodeURIComponent(user.id), {
+    method: 'GET'
+  });
+
+  if (!result.ok || !Array.isArray(result.veiculos) || !result.veiculos.length) {
+    return null;
+  }
+
+  const vehicle = result.veiculos[0];
+  tpSearchGarageVehicle = vehicle;
+  tpFillSearchVehicleFields(vehicle);
+  tpRenderSearchGarageVehicle(vehicle);
+  return vehicle;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   const diagForm = document.getElementById('diagnosticoForm');
   const partForm = document.getElementById('pecaForm');
   if (!diagForm && !partForm) return;
+
+  tpInitializeSearchGarageVehicle();
 
   const modeButtons = document.querySelectorAll('.search-mode');
   modeButtons.forEach(function(button) {
@@ -1058,7 +1160,8 @@ document.addEventListener('DOMContentLoaded', function() {
       const user = getCurrentUser();
       if (!user) return showWarning('Faça login para pesquisar peças.');
 
-      const useFilter = document.getElementById('usarFiltroVeiculo').checked;
+      const filterControl = document.getElementById('usarFiltroVeiculo');
+      const useFilter = Boolean(tpSearchGarageVehicle) || Boolean(filterControl?.checked);
       const payload = {
         usuarioId: user.id,
         termo: document.getElementById('pecaTermo').value.trim(),
@@ -1267,7 +1370,7 @@ function tpPrefillSearchFromVehicle() {
   const pecaAno = document.getElementById('pecaAno');
 
   if (filter) filter.checked = true;
-  if (fields) fields.style.display = 'grid';
+  if (fields && !tpSearchGarageVehicle) fields.style.display = 'grid';
   if (pecaMarca) pecaMarca.value = marca;
   if (pecaModelo) pecaModelo.value = modelo;
   if (pecaAno) pecaAno.value = ano;
