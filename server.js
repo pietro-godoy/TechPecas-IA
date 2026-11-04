@@ -314,7 +314,11 @@ async function loadExternalProductStores({ productId, pageToken }) {
       extractedPrice: Number.isFinite(Number(store.extracted_price)) ? Number(store.extracted_price) : null,
       originalPrice: store.original_price || null,
       shipping: store.shipping || null,
-      total: store.total || null
+      total: store.total || null,
+      extractedTotal: Number.isFinite(Number(store.extracted_total)) ? Number(store.extracted_total) : null,
+      installmentsDescription: store.installments_description || null,
+      monthlyPaymentDuration: Number.isFinite(Number(store.monthly_payment_duration)) ? Number(store.monthly_payment_duration) : null,
+      downPayment: store.down_payment || null
     }))
   };
 }
