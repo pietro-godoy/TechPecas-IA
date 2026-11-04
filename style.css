@@ -5582,3 +5582,26 @@ body.search-request-active * {
     justify-content: center;
   }
 }
+
+
+/* ===== TECH PECAS - ASAAS INDISPONIVEL ===== */
+.checkout-payment-warning {
+  margin: 0 0 .85rem;
+  padding: .8rem .9rem;
+  display: grid;
+  gap: .2rem;
+  border: 1px solid #efc7ca;
+  border-radius: 10px;
+  background: #fff3f4;
+  color: #8d343b;
+}
+
+.checkout-payment-warning strong {
+  font-size: .76rem;
+}
+
+.checkout-payment-warning span {
+  color: #9b5c61;
+  font-size: .67rem;
+  line-height: 1.45;
+}
