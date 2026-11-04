@@ -4894,3 +4894,171 @@ body.search-request-active * {
     grid-template-columns: 1fr !important;
   }
 }
+
+
+/* ===== TECH PECAS - ASAAS CHECKOUT ===== */
+.checkout-helper {
+  margin-top: .55rem;
+  color: #929499;
+  font-size: .65rem;
+  line-height: 1.45;
+}
+
+.payment-result {
+  margin: 0 1.25rem 1.25rem;
+  padding: 1.1rem;
+  border: 1px solid #dfdcd5;
+  border-radius: 14px;
+  background: #faf9f7;
+}
+
+.payment-success-head h2 {
+  margin: .35rem 0 .35rem;
+  color: var(--tp-black);
+  font-size: 1.15rem;
+  letter-spacing: -.025em;
+}
+
+.payment-success-head p {
+  color: #7d8085;
+  font-size: .76rem;
+  line-height: 1.5;
+}
+
+.pix-payment-box {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: 160px minmax(0,1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.pix-qr-image {
+  width: 160px;
+  height: 160px;
+  padding: .55rem;
+  border: 1px solid #e0ddd6;
+  border-radius: 12px;
+  background: #fff;
+  object-fit: contain;
+}
+
+.pix-payment-details strong,
+.pix-payment-details small {
+  display: block;
+}
+
+.pix-payment-details strong {
+  color: var(--tp-black);
+  font-size: .9rem;
+}
+
+.pix-payment-details small {
+  margin-top: .2rem;
+  color: #8e9094;
+  font-size: .66rem;
+}
+
+.pix-payment-details textarea {
+  width: 100%;
+  min-height: 92px;
+  margin-top: .7rem;
+  padding: .7rem;
+  resize: vertical;
+  border: 1px solid #ddd9d2;
+  border-radius: 10px;
+  background: #fff;
+  color: #4e5156;
+  font: inherit;
+  font-size: .68rem;
+  line-height: 1.4;
+}
+
+.pix-payment-details .secondary-cta {
+  margin-top: .55rem;
+}
+
+.payment-live-status {
+  margin-top: .9rem;
+  padding: .7rem .8rem;
+  border-radius: 10px;
+  background: #f0efeb;
+  color: #686b70;
+  font-size: .72rem;
+  font-weight: 750;
+}
+
+.payment-live-status.confirmed {
+  background: #eaf6ef;
+  color: #217347;
+}
+
+.payment-live-status.cancelled {
+  background: #f7ecec;
+  color: #9d454c;
+}
+
+.payment-asaas-link {
+  margin-top: 1rem;
+}
+
+.asaas-admin-section {
+  margin-top: 1rem;
+}
+
+.asaas-admin-status {
+  padding: .9rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid #e3e0da;
+  border-radius: 12px;
+  background: #faf9f7;
+}
+
+.asaas-admin-status strong,
+.asaas-admin-status span {
+  display: block;
+}
+
+.asaas-admin-status strong {
+  color: var(--tp-black);
+  font-size: .82rem;
+}
+
+.asaas-admin-status span {
+  margin-top: .15rem;
+  color: #8b8e92;
+  font-size: .66rem;
+}
+
+.asaas-status-dot {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  border-radius: 50%;
+}
+
+.asaas-status-dot.ready {
+  background: #2c9b61;
+  box-shadow: 0 0 0 5px rgba(44,155,97,.1);
+}
+
+.asaas-status-dot.pending {
+  background: #d7a039;
+  box-shadow: 0 0 0 5px rgba(215,160,57,.1);
+}
+
+@media (max-width: 560px) {
+  .pix-payment-box {
+    grid-template-columns: 1fr;
+  }
+
+  .pix-qr-image {
+    width: min(220px, 100%);
+    height: auto;
+    aspect-ratio: 1 / 1;
+    justify-self: center;
+  }
+}
