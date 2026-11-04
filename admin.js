@@ -572,8 +572,25 @@ async function adminBoot() {
     identity.innerHTML = '<span>Administrador</span><strong>' + tpEscape(validation.admin?.username || user.username) + '</strong>';
   }
 
-  await Promise.all([adminLoadSummary(), adminLoadProducts(), adminLoadOrders()]);
-  adminStartOrdersPolling();
+  const loaders = [];
+
+  if (document.getElementById('adminStats')) {
+    loaders.push(adminLoadSummary());
+  }
+
+  if (document.getElementById('adminProductsList')) {
+    loaders.push(adminLoadProducts());
+  }
+
+  if (document.getElementById('adminOrdersList')) {
+    loaders.push(adminLoadOrders());
+  }
+
+  await Promise.all(loaders);
+
+  if (document.getElementById('adminOrdersList')) {
+    adminStartOrdersPolling();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
