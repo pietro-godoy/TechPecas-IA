@@ -73,6 +73,10 @@ async function ensureStoreSchema() {
     changes.push('usuarios.papel');
   }
 
+  if (await ensureColumn('usuarios', 'asaas_customer_id', 'VARCHAR(100) NULL')) {
+    changes.push('usuarios.asaas_customer_id');
+  }
+
   if (await ensureColumn('pecas', 'imagem_url', 'VARCHAR(500) NULL')) {
     changes.push('pecas.imagem_url');
   }
@@ -96,6 +100,31 @@ async function ensureStoreSchema() {
   if (await ensureColumn('pedidos', 'endereco_entrega', 'JSON NULL')) {
     changes.push('pedidos.endereco_entrega');
   }
+
+  if (await ensureColumn('pedidos', 'asaas_payment_id', 'VARCHAR(100) NULL')) {
+    changes.push('pedidos.asaas_payment_id');
+  }
+
+  if (await ensureColumn('pedidos', 'asaas_invoice_url', 'VARCHAR(500) NULL')) {
+    changes.push('pedidos.asaas_invoice_url');
+  }
+
+  if (await ensureColumn('pedidos', 'asaas_status', 'VARCHAR(60) NULL')) {
+    changes.push('pedidos.asaas_status');
+  }
+
+  if (await ensureColumn('pedidos', 'asaas_billing_type', 'VARCHAR(30) NULL')) {
+    changes.push('pedidos.asaas_billing_type');
+  }
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS asaas_webhook_eventos (
+      event_id VARCHAR(120) PRIMARY KEY,
+      event_type VARCHAR(80) NOT NULL,
+      payment_id VARCHAR(100),
+      recebido_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`
+  );
 
   await pool.query(
     'UPDATE pedidos SET subtotal = valor_total WHERE subtotal = 0 AND valor_total > 0'
@@ -184,6 +213,157 @@ async function requireAdmin(req, res, next) {
   } catch (error) {
     return res.status(500).json({ ok: false, msg: 'Não foi possível validar o acesso administrativo.' });
   }
+}
+
+async function requireUser(req, res, next) {
+  const authorization = String(req.headers.authorization || '');
+  const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+
+  if (!token) {
+    return res.status(401).json({ ok: false, msg: 'Faça login para continuar.' });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT u.id, u.username, u.email, u.papel, u.asaas_customer_id
+       FROM sessoes s
+       INNER JOIN usuarios u ON u.id = s.usuario_id
+       WHERE s.id = ?
+         AND (s.expira_em IS NULL OR s.expira_em > NOW())
+       LIMIT 1`,
+      [token]
+    );
+
+    if (!rows.length) {
+      return res.status(401).json({ ok: false, msg: 'Sua sessão expirou. Entre novamente.' });
+    }
+
+    req.user = rows[0];
+    next();
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível validar sua sessão.' });
+  }
+}
+
+function getAsaasBaseUrl() {
+  const configured = normalizeText(process.env.ASAAS_BASE_URL);
+  if (configured) return configured.replace(/\/$/, '');
+
+  return String(process.env.ASAAS_ENV || 'sandbox').toLowerCase() === 'production'
+    ? 'https://api.asaas.com/v3'
+    : 'https://api-sandbox.asaas.com/v3';
+}
+
+function asaasConfigured() {
+  return Boolean(normalizeText(process.env.ASAAS_API_KEY));
+}
+
+async function asaasRequest(endpoint, options = {}) {
+  const apiKey = normalizeText(process.env.ASAAS_API_KEY);
+  if (!apiKey) {
+    const error = new Error('Integração Asaas ainda não configurada no servidor.');
+    error.code = 'ASAAS_NOT_CONFIGURED';
+    throw error;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(options.timeout || 30000));
+
+  try {
+    const response = await fetch(getAsaasBaseUrl() + endpoint, {
+      method: options.method || 'GET',
+      signal: controller.signal,
+      headers: {
+        accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'TechPecas/1.0',
+        access_token: apiKey
+      },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body)
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const descriptions = Array.isArray(data.errors)
+        ? data.errors.map((item) => item.description || item.code).filter(Boolean)
+        : [];
+      const message = descriptions.join(' | ') || data.message || ('Asaas HTTP ' + response.status);
+      const error = new Error(message);
+      error.status = response.status;
+      error.asaas = data;
+      throw error;
+    }
+
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function onlyDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function paymentDueDate(days = 1) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+async function getOrCreateAsaasCustomer(user, payer, address) {
+  if (user.asaas_customer_id) return user.asaas_customer_id;
+
+  const cpfCnpj = onlyDigits(payer.cpfCnpj);
+  const name = normalizeText(payer.name);
+
+  if (!name || ![11, 14].includes(cpfCnpj.length)) {
+    const error = new Error('Informe nome completo e um CPF/CNPJ válido para gerar a cobrança.');
+    error.code = 'INVALID_PAYER';
+    throw error;
+  }
+
+  const customer = await asaasRequest('/customers', {
+    method: 'POST',
+    body: {
+      name,
+      cpfCnpj,
+      email: normalizeText(payer.email) || undefined,
+      mobilePhone: onlyDigits(payer.mobilePhone) || undefined,
+      postalCode: onlyDigits(address.cep) || undefined,
+      address: normalizeText(address.logradouro) || undefined,
+      addressNumber: normalizeText(address.numero) || undefined,
+      complement: normalizeText(address.complemento) || undefined,
+      externalReference: 'techpecas-user-' + user.id,
+      notificationDisabled: true
+    }
+  });
+
+  if (!customer.id) {
+    throw new Error('O Asaas não retornou o identificador do cliente.');
+  }
+
+  await pool.execute(
+    'UPDATE usuarios SET asaas_customer_id = ? WHERE id = ?',
+    [customer.id, user.id]
+  );
+
+  user.asaas_customer_id = customer.id;
+  return customer.id;
+}
+
+function mapAsaasEventToOrderStatus(event) {
+  if (['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'].includes(event)) return 'pago';
+
+  if ([
+    'PAYMENT_REFUNDED',
+    'PAYMENT_PARTIALLY_REFUNDED',
+    'PAYMENT_CHARGEBACK_REQUESTED',
+    'PAYMENT_CHARGEBACK_DISPUTE',
+    'PAYMENT_DELETED'
+  ].includes(event)) return 'cancelado';
+
+  return null;
 }
 
 function buildExternalSearchQuery({ termo, marca, modelo, ano }) {
