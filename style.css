@@ -4776,7 +4776,7 @@ body.auth-page {
   font-size: .62rem;
 }
 
-@media (max-width: 1080px) {
+@media (max-width: 720px) {
   .search-layout {
     grid-template-columns: 1fr;
   }
