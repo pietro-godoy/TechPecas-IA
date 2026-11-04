@@ -131,14 +131,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const currentUsername = current?.username || null;
 
   if (current?.papel === 'admin') {
-    const navAuthTarget = document.getElementById('navAuth');
-    const nav = navAuthTarget?.parentElement;
-    if (nav && !nav.querySelector('.admin-nav-link')) {
-      const adminLink = document.createElement('a');
-      adminLink.href = 'admin.html';
-      adminLink.className = 'admin-nav-link';
-      adminLink.textContent = 'Admin';
-      nav.insertBefore(adminLink, navAuthTarget);
+    const page = (window.location.pathname.split('/').pop() || 'index.html').toLowerCase();
+
+    if (page !== 'admin.html' && page !== 'login.html') {
+      const target = page === 'catalogo.html'
+        ? 'admin.html#adminCatalog'
+        : (page === 'pedidos.html' ? 'admin.html#adminOrders' : 'admin.html#adminDashboard');
+
+      window.location.replace(target);
+      return;
     }
   }
   
@@ -275,8 +276,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const res = await loginUser(username, password);
       if (res.ok) {
+        const loggedUser = getCurrentUser();
         showSuccess("Login realizado com sucesso!", "Bem-vindo!", () => {
-          window.location.href = "index.html";
+          window.location.href = loggedUser?.papel === 'admin'
+            ? "admin.html#adminDashboard"
+            : "index.html";
         });
       } else {
         if (res.usuarioNaoExiste) {
