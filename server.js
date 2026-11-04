@@ -1044,6 +1044,8 @@ app.get('/api/admin/produtos', requireAdmin, async (req, res) => {
     const [produtos] = await pool.query(
       `SELECT p.id, p.nome, p.descricao, p.fabricante, p.categoria, p.sku,
               p.preco_site, p.estoque, p.imagem_url, p.ativo, p.criado_em,
+              p.auto_importado, p.origem_tipo, p.origem_nome, p.origem_url,
+              p.preco_referencia, p.auto_import_term,
               COUNT(c.id) AS total_compatibilidades
        FROM pecas p
        LEFT JOIN compatibilidades c ON c.peca_id = p.id
@@ -1073,7 +1075,9 @@ app.get('/api/admin/produtos/:id', requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.execute(
       `SELECT id, nome, descricao, fabricante, categoria, sku,
-              preco_site, estoque, imagem_url, ativo
+              preco_site, estoque, imagem_url, ativo,
+              auto_importado, origem_tipo, origem_nome, origem_url,
+              preco_referencia, auto_import_term
        FROM pecas WHERE id = ? LIMIT 1`,
       [id]
     );
