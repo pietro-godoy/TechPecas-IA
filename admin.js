@@ -11,11 +11,21 @@ function adminMoney(value) {
 function adminStatusLabel(status) {
   const labels = {
     aguardando_pagamento: 'Aguardando pagamento',
+    analise_risco: 'Em análise de segurança',
+    pagamento_recusado: 'Pagamento recusado',
+    vencido: 'Pagamento vencido',
     pago: 'Pago',
+    pago_revisar_estoque: 'Pago — revisar estoque',
     preparando: 'Preparando',
     enviado: 'Enviado',
     concluido: 'Concluído',
-    cancelado: 'Cancelado'
+    cancelado: 'Cancelado',
+    estorno_em_processamento: 'Estorno em processamento',
+    estornado_parcial: 'Estornado parcialmente',
+    estornado: 'Estornado',
+    chargeback: 'Chargeback recebido',
+    chargeback_em_disputa: 'Chargeback em disputa',
+    chargeback_em_reversao: 'Chargeback em reversão'
   };
   return labels[status] || status || 'Pedido';
 }
@@ -258,7 +268,7 @@ function adminRenderOrders() {
       '<div><span>Pagamento</span><strong>' + (order.forma_pagamento === 'pix' ? 'Pix' : 'Cartão') + '</strong></div>' +
       '<label class="admin-order-status">Status' +
         '<select data-order-status="' + Number(order.id) + '">' +
-          ['aguardando_pagamento','pago','preparando','enviado','concluido','cancelado']
+          ['aguardando_pagamento','analise_risco','pagamento_recusado','vencido','pago','pago_revisar_estoque','preparando','enviado','concluido','cancelado','estorno_em_processamento','estornado_parcial','estornado','chargeback','chargeback_em_disputa','chargeback_em_reversao']
             .map((status) => '<option value="' + status + '"' + (status === order.status ? ' selected' : '') + '>' + adminStatusLabel(status) + '</option>')
             .join('') +
         '</select>' +
