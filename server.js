@@ -319,6 +319,19 @@ async function requireUser(req, res, next) {
     return res.status(500).json({ ok: false, msg: 'Não foi possível validar sua sessão.' });
   }
 }
+function requireCustomer(req, res, next) {
+  return requireUser(req, res, () => {
+    if (req.user?.papel === 'admin') {
+      return res.status(403).json({
+        ok: false,
+        msg: 'Contas administrativas não podem realizar compras.'
+      });
+    }
+
+    next();
+  });
+}
+
 
 function getAsaasBaseUrl() {
   const configured = normalizeText(process.env.ASAAS_BASE_URL);
@@ -1341,12 +1354,16 @@ app.delete('/api/admin/produtos/:id', requireAdmin, async (req, res) => {
 app.get('/api/admin/pedidos', requireAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT p.id, p.valor_total, p.forma_pagamento, p.status, p.criado_em,
+      `SELECT p.id, p.usuario_id, p.subtotal, p.frete, p.valor_total,
+              p.forma_pagamento, p.status, p.criado_em,
+              p.asaas_payment_id, p.asaas_status, p.asaas_billing_type,
               u.username, u.email,
-              COUNT(ip.id) AS total_itens
+              COUNT(ip.id) AS total_itens,
+              GROUP_CONCAT(CONCAT(pc.nome, ' x', ip.quantidade) SEPARATOR ' • ') AS resumo_itens
        FROM pedidos p
        INNER JOIN usuarios u ON u.id = p.usuario_id
        LEFT JOIN itens_pedido ip ON ip.pedido_id = p.id
+       LEFT JOIN pecas pc ON pc.id = ip.peca_id
        GROUP BY p.id
        ORDER BY p.criado_em DESC
        LIMIT 100`
@@ -1354,14 +1371,244 @@ app.get('/api/admin/pedidos', requireAdmin, async (req, res) => {
 
     return res.json({
       ok: true,
+      sandbox: String(process.env.ASAAS_ENV || 'sandbox').toLowerCase() === 'sandbox',
       pedidos: rows.map((p) => ({
         ...p,
+        subtotal: Number(p.subtotal || 0),
+        frete: Number(p.frete || 0),
         valor_total: Number(p.valor_total || 0),
         total_itens: Number(p.total_itens || 0)
       }))
     });
   } catch (error) {
     return res.status(500).json({ ok: false, msg: 'Não foi possível carregar os pedidos.' });
+  }
+});
+
+app.get('/api/admin/pedidos/:id/detalhes', requireAdmin, async (req, res) => {
+  const pedidoId = Number(req.params.id);
+  if (!pedidoId) return res.status(400).json({ ok: false, msg: 'Pedido inválido.' });
+
+  try {
+    const [pedidos] = await pool.execute(
+      `SELECT p.id, p.usuario_id, p.subtotal, p.frete, p.valor_total,
+              p.forma_pagamento, p.status, p.endereco_entrega, p.criado_em,
+              p.asaas_payment_id, p.asaas_status, p.asaas_billing_type,
+              u.username, u.email
+       FROM pedidos p
+       INNER JOIN usuarios u ON u.id = p.usuario_id
+       WHERE p.id = ?
+       LIMIT 1`,
+      [pedidoId]
+    );
+
+    if (!pedidos.length) {
+      return res.status(404).json({ ok: false, msg: 'Pedido não encontrado.' });
+    }
+
+    const [itens] = await pool.execute(
+      `SELECT ip.peca_id, ip.quantidade, ip.preco_unitario,
+              pc.nome, pc.fabricante, pc.sku, pc.imagem_url
+       FROM itens_pedido ip
+       INNER JOIN pecas pc ON pc.id = ip.peca_id
+       WHERE ip.pedido_id = ?
+       ORDER BY ip.id`,
+      [pedidoId]
+    );
+
+    const pedido = pedidos[0];
+    pedido.subtotal = Number(pedido.subtotal || 0);
+    pedido.frete = Number(pedido.frete || 0);
+    pedido.valor_total = Number(pedido.valor_total || 0);
+
+    if (typeof pedido.endereco_entrega === 'string') {
+      try { pedido.endereco_entrega = JSON.parse(pedido.endereco_entrega || '{}'); }
+      catch { pedido.endereco_entrega = {}; }
+    }
+
+    return res.json({
+      ok: true,
+      pedido,
+      usuario: {
+        id: Number(pedido.usuario_id),
+        username: pedido.username,
+        email: pedido.email
+      },
+      itens: itens.map((item) => ({
+        ...item,
+        quantidade: Number(item.quantidade || 0),
+        preco_unitario: Number(item.preco_unitario || 0)
+      }))
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: 'Não foi possível carregar os detalhes do pedido.' });
+  }
+});
+
+app.post('/api/admin/pedidos/:id/confirmar-pagamento', requireAdmin, async (req, res) => {
+  const pedidoId = Number(req.params.id);
+  if (!pedidoId) return res.status(400).json({ ok: false, msg: 'Pedido inválido.' });
+
+  if (String(process.env.ASAAS_ENV || 'sandbox').toLowerCase() !== 'sandbox') {
+    return res.status(403).json({
+      ok: false,
+      msg: 'A confirmação manual de pagamento só está disponível no Sandbox.'
+    });
+  }
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, status, asaas_payment_id
+       FROM pedidos
+       WHERE id = ?
+       LIMIT 1`,
+      [pedidoId]
+    );
+
+    if (!rows.length) return res.status(404).json({ ok: false, msg: 'Pedido não encontrado.' });
+
+    const pedido = rows[0];
+    if (!pedido.asaas_payment_id) {
+      return res.status(409).json({ ok: false, msg: 'Este pedido não possui cobrança no Asaas.' });
+    }
+
+    if (!['aguardando_pagamento', 'analise_risco', 'vencido'].includes(pedido.status)) {
+      return res.status(409).json({ ok: false, msg: 'Este pedido não está elegível para confirmação manual.' });
+    }
+
+    const payment = await asaasRequest(
+      '/sandbox/payment/' + encodeURIComponent(pedido.asaas_payment_id) + '/confirm',
+      { method: 'POST', body: {} }
+    );
+
+    return res.json({
+      ok: true,
+      msg: 'Pagamento confirmado no Sandbox. O Webhook atualizará o pedido.',
+      paymentStatus: payment.status || null
+    });
+  } catch (error) {
+    return res.status(error.status && error.status < 500 ? error.status : 502).json({
+      ok: false,
+      msg: error.message || 'Não foi possível confirmar o pagamento.'
+    });
+  }
+});
+
+app.post('/api/admin/pedidos/:id/estornar', requireAdmin, async (req, res) => {
+  const pedidoId = Number(req.params.id);
+  if (!pedidoId) return res.status(400).json({ ok: false, msg: 'Pedido inválido.' });
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, status, asaas_payment_id
+       FROM pedidos
+       WHERE id = ?
+       LIMIT 1`,
+      [pedidoId]
+    );
+
+    if (!rows.length) return res.status(404).json({ ok: false, msg: 'Pedido não encontrado.' });
+
+    const pedido = rows[0];
+    if (!pedido.asaas_payment_id) {
+      return res.status(409).json({ ok: false, msg: 'Este pedido não possui cobrança no Asaas.' });
+    }
+
+    if (!['pago', 'pago_revisar_estoque', 'preparando'].includes(pedido.status)) {
+      return res.status(409).json({ ok: false, msg: 'Este pedido não está elegível para estorno.' });
+    }
+
+    const payment = await asaasRequest(
+      '/payments/' + encodeURIComponent(pedido.asaas_payment_id) + '/refund',
+      {
+        method: 'POST',
+        body: {
+          description: normalizeText(req.body.motivo) || 'Estorno solicitado pelo administrador do Tech Peças.'
+        }
+      }
+    );
+
+    await pool.execute(
+      `UPDATE pedidos
+       SET status = 'estorno_em_processamento',
+           asaas_status = ?
+       WHERE id = ?`,
+      [payment.status || 'REFUND_REQUESTED', pedidoId]
+    );
+
+    return res.json({
+      ok: true,
+      msg: 'Estorno solicitado ao Asaas.',
+      paymentStatus: payment.status || null
+    });
+  } catch (error) {
+    return res.status(error.status && error.status < 500 ? error.status : 502).json({
+      ok: false,
+      msg: error.message || 'Não foi possível solicitar o estorno.'
+    });
+  }
+});
+
+app.post('/api/admin/pedidos/:id/cancelar', requireAdmin, async (req, res) => {
+  const pedidoId = Number(req.params.id);
+  if (!pedidoId) return res.status(400).json({ ok: false, msg: 'Pedido inválido.' });
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, status, asaas_payment_id
+       FROM pedidos
+       WHERE id = ?
+       LIMIT 1`,
+      [pedidoId]
+    );
+
+    if (!rows.length) return res.status(404).json({ ok: false, msg: 'Pedido não encontrado.' });
+
+    const pedido = rows[0];
+
+    if (pedido.status === 'cancelado') {
+      return res.json({ ok: true, msg: 'Pedido já estava cancelado.' });
+    }
+
+    if (!['aguardando_pagamento', 'pagamento_recusado', 'vencido', 'analise_risco'].includes(pedido.status)) {
+      return res.status(409).json({
+        ok: false,
+        msg: 'Pedidos já pagos devem ser estornados, não cancelados.'
+      });
+    }
+
+    if (pedido.asaas_payment_id) {
+      await asaasRequest(
+        '/payments/' + encodeURIComponent(pedido.asaas_payment_id),
+        { method: 'DELETE' }
+      );
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await releaseOrderStock(conn, pedidoId);
+      await conn.execute(
+        `UPDATE pedidos
+         SET status = 'cancelado',
+             asaas_status = 'DELETED'
+         WHERE id = ?`,
+        [pedidoId]
+      );
+      await conn.commit();
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
+    }
+
+    return res.json({ ok: true, msg: 'Pedido cancelado.' });
+  } catch (error) {
+    return res.status(error.status && error.status < 500 ? error.status : 502).json({
+      ok: false,
+      msg: error.message || 'Não foi possível cancelar o pedido.'
+    });
   }
 });
 
@@ -1514,7 +1761,7 @@ app.get('/api/pagamentos/asaas/status', (req, res) => {
   });
 });
 
-app.post('/api/pagamentos/asaas/criar', requireUser, async (req, res) => {
+app.post('/api/pagamentos/asaas/criar', requireCustomer, async (req, res) => {
   const pedidoId = Number(req.body.pedidoId);
   const payer = req.body.pagador && typeof req.body.pagador === 'object' ? req.body.pagador : {};
 
@@ -1881,7 +2128,7 @@ app.post('/api/admin/asaas/webhook', requireAdmin, async (req, res) => {
 
 // -------------------- PEDIDOS / CHECKOUT --------------------
 
-app.post('/api/pedidos', requireUser, async (req, res) => {
+app.post('/api/pedidos', requireCustomer, async (req, res) => {
   const usuarioId = Number(req.user.id);
   const checkoutToken = normalizeText(req.body.checkoutToken);
   const itensRecebidos = Array.isArray(req.body.itens) ? req.body.itens : [];
@@ -2066,7 +2313,7 @@ app.post('/api/pedidos', requireUser, async (req, res) => {
   }
 });
 
-app.post('/api/pedidos/:id/cancelar', requireUser, async (req, res) => {
+app.post('/api/pedidos/:id/cancelar', requireCustomer, async (req, res) => {
   const pedidoId = Number(req.params.id);
 
   if (!pedidoId) {
