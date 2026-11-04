@@ -59,6 +59,12 @@ CREATE TABLE pecas (
   estoque INT NOT NULL DEFAULT 0,
   imagem_url VARCHAR(500),
   ativo TINYINT(1) NOT NULL DEFAULT 1,
+  auto_importado TINYINT(1) NOT NULL DEFAULT 0,
+  origem_tipo VARCHAR(30) NOT NULL DEFAULT 'proprio',
+  origem_nome VARCHAR(150),
+  origem_url VARCHAR(700),
+  preco_referencia DECIMAL(10,2),
+  auto_import_term VARCHAR(255),
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
