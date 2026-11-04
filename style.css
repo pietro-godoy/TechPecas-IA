@@ -5513,3 +5513,41 @@ body.search-request-active * {
     flex-direction: column;
   }
 }
+
+
+/* ===== TECH PECAS - IMAGEM NOS CARDS DA BUSCA ===== */
+.part-card {
+  overflow: hidden;
+}
+
+.part-card-media {
+  height: 190px;
+  margin: -1.2rem -1.2rem 1rem;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #f7f6f3;
+  border-bottom: 1px solid #ebe8e2;
+}
+
+.part-card-media img {
+  width: auto;
+  height: auto;
+  max-width: 86%;
+  max-height: 86%;
+  display: block;
+  object-fit: contain;
+  object-position: center;
+}
+
+.part-card-placeholder {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--tp-black);
+  color: #fff;
+  font-size: .75rem;
+  font-weight: 850;
+}
