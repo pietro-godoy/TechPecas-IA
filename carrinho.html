@@ -51,6 +51,25 @@
 
         <form id="checkoutForm" class="checkout-form">
           <div class="checkout-block">
+            <h2>Pagador</h2>
+            <div class="checkout-fields">
+              <label class="field-wide">Nome completo
+                <input id="checkoutNome" type="text" autocomplete="name" placeholder="Nome do pagador" required>
+              </label>
+              <label>CPF/CNPJ
+                <input id="checkoutCpfCnpj" type="text" inputmode="numeric" placeholder="Somente números" required>
+              </label>
+              <label>E-mail
+                <input id="checkoutEmail" type="email" autocomplete="email" placeholder="email@exemplo.com">
+              </label>
+              <label class="field-wide">Celular
+                <input id="checkoutCelular" type="tel" inputmode="tel" placeholder="(14) 99999-9999">
+              </label>
+            </div>
+            <p class="checkout-helper">No Sandbox, use apenas dados de teste ou dados que você tenha autorização para utilizar.</p>
+          </div>
+
+          <div class="checkout-block">
             <h2>Entrega</h2>
             <div class="checkout-fields">
               <label>CEP<input id="checkoutCep" type="text" inputmode="numeric" placeholder="00000-000" required></label>
@@ -77,6 +96,8 @@
           <button id="checkoutSubmit" type="submit" class="primary-cta button-reset checkout-submit">Criar pedido <span>→</span></button>
           <p class="checkout-security">Nenhum número de cartão ou CVV é armazenado pelo Tech Peças.</p>
         </form>
+
+        <div id="paymentResult" class="payment-result" style="display:none;"></div>
       </aside>
     </section>
   </main>
