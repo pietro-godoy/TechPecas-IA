@@ -420,11 +420,15 @@ async function releaseOrderStock(conn, pedidoId) {
   if (!pedido || Number(pedido.estoque_devolvido) === 1) return false;
 
   const [itens] = await conn.execute(
-    'SELECT peca_id, quantidade FROM itens_pedido WHERE pedido_id = ?',
+    `SELECT ip.peca_id, ip.quantidade, p.auto_importado
+     FROM itens_pedido ip
+     INNER JOIN pecas p ON p.id = ip.peca_id
+     WHERE ip.pedido_id = ?`,
     [pedidoId]
   );
 
   for (const item of itens) {
+    if (Number(item.auto_importado) === 1) continue;
     await conn.execute(
       'UPDATE pecas SET estoque = estoque + ? WHERE id = ?',
       [Number(item.quantidade), Number(item.peca_id)]
@@ -449,7 +453,7 @@ async function reserveOrderStockAgain(conn, pedidoId) {
   if (Number(pedido.estoque_devolvido) === 0) return true;
 
   const [itens] = await conn.execute(
-    `SELECT ip.peca_id, ip.quantidade, p.nome, p.estoque, p.ativo
+    `SELECT ip.peca_id, ip.quantidade, p.nome, p.estoque, p.ativo, p.auto_importado
      FROM itens_pedido ip
      INNER JOIN pecas p ON p.id = ip.peca_id
      WHERE ip.pedido_id = ?
@@ -458,12 +462,14 @@ async function reserveOrderStockAgain(conn, pedidoId) {
   );
 
   for (const item of itens) {
-    if (Number(item.ativo) !== 1 || Number(item.estoque) < Number(item.quantidade)) {
+    if (Number(item.ativo) !== 1) return false;
+    if (Number(item.auto_importado) !== 1 && Number(item.estoque) < Number(item.quantidade)) {
       return false;
     }
   }
 
   for (const item of itens) {
+    if (Number(item.auto_importado) === 1) continue;
     await conn.execute(
       'UPDATE pecas SET estoque = estoque - ? WHERE id = ?',
       [Number(item.quantidade), Number(item.peca_id)]
@@ -1387,7 +1393,7 @@ app.get('/api/catalogo', async (req, res) => {
 
     const [rows] = await pool.execute(
       `SELECT p.id, p.nome, p.descricao, p.fabricante, p.categoria, p.sku,
-              p.preco_site, p.estoque, p.imagem_url
+              p.preco_site, p.estoque, p.imagem_url, p.auto_importado
        FROM pecas p
        WHERE ${where.join(' AND ')}
        ORDER BY CASE WHEN p.estoque > 0 THEN 0 ELSE 1 END,
@@ -1401,7 +1407,8 @@ app.get('/api/catalogo', async (req, res) => {
       produtos: rows.map((p) => ({
         ...p,
         preco_site: p.preco_site === null ? null : Number(p.preco_site),
-        estoque: Number(p.estoque || 0)
+        estoque: Number(p.estoque || 0),
+        auto_importado: Number(p.auto_importado || 0)
       }))
     });
   } catch (error) {
@@ -1423,7 +1430,7 @@ app.get('/api/catalogo/:id', async (req, res) => {
   try {
     const [rows] = await pool.execute(
       `SELECT id, nome, descricao, fabricante, categoria, sku,
-              preco_site, estoque, imagem_url
+              preco_site, estoque, imagem_url, auto_importado
        FROM pecas
        WHERE id = ? AND ativo = 1
        LIMIT 1`,
@@ -1445,6 +1452,7 @@ app.get('/api/catalogo/:id', async (req, res) => {
     const produto = rows[0];
     produto.preco_site = produto.preco_site === null ? null : Number(produto.preco_site);
     produto.estoque = Number(produto.estoque || 0);
+    produto.auto_importado = Number(produto.auto_importado || 0);
 
     return res.json({ ok: true, produto, compatibilidades });
   } catch (error) {
@@ -1862,7 +1870,7 @@ app.post('/api/pedidos', async (req, res) => {
     const placeholders = ids.map(() => '?').join(',');
 
     const [produtos] = await conn.query(
-      `SELECT id, nome, preco_site, estoque, ativo
+      `SELECT id, nome, preco_site, estoque, ativo, auto_importado
        FROM pecas
        WHERE id IN (${placeholders})
        FOR UPDATE`,
@@ -1879,7 +1887,7 @@ app.post('/api/pedidos', async (req, res) => {
         throw new Error('Produto indisponível: ' + item.pecaId);
       }
 
-      if (Number(produto.estoque) < item.quantidade) {
+      if (Number(produto.auto_importado) !== 1 && Number(produto.estoque) < item.quantidade) {
         throw new Error('Estoque insuficiente para ' + produto.nome);
       }
 
@@ -1920,10 +1928,13 @@ app.post('/api/pedidos', async (req, res) => {
         [pedidoId, item.pecaId, item.quantidade, item.preco.toFixed(2)]
       );
 
-      await conn.execute(
-        'UPDATE pecas SET estoque = estoque - ? WHERE id = ?',
-        [item.quantidade, item.pecaId]
-      );
+      const produto = mapa.get(item.pecaId);
+      if (Number(produto?.auto_importado) !== 1) {
+        await conn.execute(
+          'UPDATE pecas SET estoque = estoque - ? WHERE id = ?',
+          [item.quantidade, item.pecaId]
+        );
+      }
     }
 
     await conn.commit();
@@ -2106,7 +2117,7 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
       `INSERT IGNORE INTO pecas
        (nome, descricao, fabricante, categoria, sku, preco_site, estoque, imagem_url, ativo,
         auto_importado, origem_tipo, origem_nome, origem_url, preco_referencia, auto_import_term)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, 1, 'internet', ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, 1, 'internet', ?, ?, ?, ?)`,
       [
         normalizeText(product.title) || termo,
         description,
