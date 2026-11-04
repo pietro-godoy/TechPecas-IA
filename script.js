@@ -15,6 +15,7 @@ function setCurrentUser(userData) {
   localStorage.setItem(USER_KEY, JSON.stringify({
     id: userData.id,
     username: userData.username,
+    email: userData.email || '',
     papel: userData.papel || 'cliente',
     token: userData.token || null
   }));
