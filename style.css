@@ -4696,3 +4696,97 @@ body.auth-page {
 .catalog-card-media img {
   transform: none !important;
 }
+
+
+/* ===== TECH PECAS - HISTORICO LATERAL ===== */
+.search-layout {
+  width: min(1440px, calc(100% - 2rem));
+  margin: -2.5rem auto 0;
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 1rem;
+  align-items: start;
+}
+
+.search-layout .search-workspace {
+  width: 100%;
+  margin: 0;
+}
+
+.search-history-sidebar {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 1.1rem !important;
+  position: sticky;
+  top: 92px;
+  border: 1px solid #e1dfda !important;
+  border-radius: 18px !important;
+  background: #fff !important;
+  box-shadow: var(--tp-shadow) !important;
+}
+
+.search-history-sidebar .history-head {
+  margin-bottom: .65rem;
+  align-items: center;
+}
+
+.search-history-sidebar .history-head h2 {
+  font-size: 1.15rem !important;
+  margin-top: .25rem;
+}
+
+.history-clear-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #9a4a50;
+  font-size: .68rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.search-history-sidebar .history-list {
+  max-height: 520px;
+  overflow-y: auto;
+  padding-right: .15rem;
+}
+
+.search-history-sidebar .history-list li {
+  padding: .75rem 0 !important;
+  display: grid !important;
+  gap: .18rem;
+  border-bottom: 1px solid #efede9 !important;
+}
+
+.search-history-sidebar .history-list li:last-child {
+  border-bottom: 0 !important;
+}
+
+.search-history-sidebar .history-term {
+  color: var(--tp-black);
+  font-size: .78rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.search-history-sidebar time {
+  color: #a0a2a6;
+  font-size: .62rem;
+}
+
+@media (max-width: 1080px) {
+  .search-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .search-history-sidebar {
+    position: static;
+    order: 2;
+  }
+
+  .search-history-sidebar .history-list {
+    max-height: 260px;
+  }
+}
