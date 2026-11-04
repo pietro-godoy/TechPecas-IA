@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Gerenciamento de pedidos do Tech Peças.">
+  <title>Pedidos | Tech Peças Admin</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta name="theme-color" content="#101216">
+  <link rel="stylesheet" href="style.css">
+  <script src="modal.js"></script>
+</head>
+<body class="admin-body">
+  <div id="adminBlocked" class="admin-blocked" style="display:none;">
+    <div class="admin-blocked-card">
+      <span class="section-label">ACESSO RESTRITO</span>
+      <h1>Painel administrativo</h1>
+      <p>Entre com uma conta autorizada como administrador para continuar.</p>
+      <a href="login.html" class="primary-cta">Fazer login <span>→</span></a>
+    </div>
+  </div>
+
+  <main id="adminContent" class="admin-dashboard-shell" style="display:none;">
+    <aside class="admin-sidebar">
+      <a class="admin-sidebar-brand" href="admin.html">
+        <span class="brand-mark">TP</span>
+        <span>
+          <strong>Tech Peças</strong>
+          <small>Administração</small>
+        </span>
+      </a>
+
+      <div class="admin-sidebar-label">ADMINISTRAÇÃO</div>
+      <nav class="admin-sidebar-nav">
+        <a href="admin.html" class="">
+          <span class="admin-nav-icon">⌂</span>
+          <span>Início</span>
+        </a>
+        <a href="admin-catalogo.html" class="">
+          <span class="admin-nav-icon">▦</span>
+          <span>Catálogo</span>
+        </a>
+        <a href="admin-pedidos.html" class="active">
+          <span class="admin-nav-icon">≡</span>
+          <span>Pedidos</span>
+        </a>
+      </nav>
+
+      <div class="admin-sidebar-footer">
+        <div id="navAuth" class="nav-auth admin-nav-auth"></div>
+      </div>
+    </aside>
+
+    <div class="admin-workspace">
+      <header class="admin-topbar">
+        <div>
+          <span class="admin-topbar-kicker">PAINEL ADMINISTRATIVO</span>
+          <h1>Pedidos</h1>
+        </div>
+        <div id="adminIdentity" class="admin-identity"></div>
+      </header>
+
+      <div class="admin-workspace-content">
+        <section id="adminOrders" class="admin-section admin-orders-section admin-page-section">
+          <div class="admin-section-head">
+            <div>
+              <span class="section-label dark-label">PEDIDOS</span>
+              <h2>Pedidos dos usuários</h2>
+              <p class="admin-section-description">Acompanhe clientes, pagamentos, cancelamentos, estornos e andamento da entrega.</p>
+            </div>
+            <button id="adminRefreshOrders" type="button" class="secondary-cta button-reset">Atualizar</button>
+          </div>
+          <div id="adminOrdersList" class="admin-orders-list"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>
