@@ -2191,6 +2191,56 @@ function inferImportedCategory(text) {
   return 'Autopeças';
 }
 
+function titleCasePtBr(value) {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/\b\p{L}/gu, (char) => char.toUpperCase());
+}
+
+function buildImportedProductName({ termo, marca, modelo, ano, index }) {
+  const keyword = titleCasePtBr(termo);
+  const vehicle = [marca, modelo, ano]
+    .filter(Boolean)
+    .map((value) => normalizeText(value))
+    .join(' ');
+
+  return [keyword, vehicle, 'Opção ' + index]
+    .filter(Boolean)
+    .join(' — ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function syncImportedNamesForSearch({ termo, marca, modelo, ano }) {
+  const searchKey = normalizeText([termo, marca, modelo, ano].filter(Boolean).join(' | ')).slice(0, 255);
+
+  const [rows] = await pool.execute(
+    `SELECT id
+     FROM pecas
+     WHERE auto_importado = 1
+       AND auto_import_term = ?
+     ORDER BY id ASC`,
+    [searchKey]
+  );
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const newName = buildImportedProductName({
+      termo,
+      marca,
+      modelo,
+      ano,
+      index: i + 1
+    });
+
+    await pool.execute(
+      'UPDATE pecas SET nome = ? WHERE id = ?',
+      [newName, rows[i].id]
+    );
+  }
+
+  return rows.length;
+}
+
 async function autoImportExternalDrafts({ termo, marca, modelo, ano, products }) {
   const candidates = (Array.isArray(products) ? products : [])
     .map((product) => ({
@@ -2205,7 +2255,8 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
 
   const imported = [];
 
-  for (const product of candidates) {
+  for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
+    const product = candidates[candidateIndex];
     const sku = externalDraftSku(product);
     const suggestedPrice = Math.round(product.numericPrice * 0.8 * 100) / 100;
     const stockSeed = parseInt(crypto.createHash('sha1').update(sku).digest('hex').slice(0, 8), 16);
@@ -2213,10 +2264,18 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
     const sourceUrl = /^https?:\/\//i.test(product.productLink || '') ? product.productLink : null;
     const thumbnail = /^https?:\/\//i.test(product.thumbnail || '') ? product.thumbnail : null;
     const vehicleText = [marca, modelo, ano].filter(Boolean).join(' ');
+    const importedName = buildImportedProductName({
+      termo,
+      marca,
+      modelo,
+      ano,
+      index: candidateIndex + 1
+    });
     const category = inferImportedCategory([termo, product.title].filter(Boolean).join(' '));
     const description =
       'Peça automotiva selecionada pela Tech Peças' +
       (vehicleText ? ' para aplicação pesquisada em ' + vehicleText : '') +
+      '. Referência externa: ' + normalizeText(product.title || 'Produto automotivo') +
       '. Consulte as especificações do veículo e do fabricante antes da instalação.';
 
     const [result] = await pool.execute(
@@ -2225,7 +2284,7 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
         auto_importado, origem_tipo, origem_nome, origem_url, preco_referencia, auto_import_term)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'internet', ?, ?, ?, ?)`,
       [
-        normalizeText(product.title) || termo,
+        importedName,
         description,
         'Linha Tech Peças',
         category,
@@ -2259,7 +2318,7 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
 
       imported.push({
         id: result.insertId,
-        nome: normalizeText(product.title) || termo,
+        nome: importedName,
         sku,
         precoReferencia: product.numericPrice,
         precoSugerido: suggestedPrice,
@@ -2286,6 +2345,8 @@ app.post('/api/ofertas-externas/pesquisar', async (req, res) => {
 
   try {
     const result = await searchExternalProducts({ termo, marca, modelo, ano });
+
+    await syncImportedNamesForSearch({ termo, marca, modelo, ano });
 
     let autoImportados = [];
     const buscaAmpla = isBroadCategorySearch(termo);
