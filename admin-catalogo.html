@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Gerenciamento de produtos do Tech Peças.">
+  <title>Catálogo | Tech Peças Admin</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta name="theme-color" content="#101216">
+  <link rel="stylesheet" href="style.css">
+  <script src="modal.js"></script>
+</head>
+<body class="admin-body">
+  <div id="adminBlocked" class="admin-blocked" style="display:none;">
+    <div class="admin-blocked-card">
+      <span class="section-label">ACESSO RESTRITO</span>
+      <h1>Painel administrativo</h1>
+      <p>Entre com uma conta autorizada como administrador para continuar.</p>
+      <a href="login.html" class="primary-cta">Fazer login <span>→</span></a>
+    </div>
+  </div>
+
+  <main id="adminContent" class="admin-dashboard-shell" style="display:none;">
+    <aside class="admin-sidebar">
+      <a class="admin-sidebar-brand" href="admin.html">
+        <span class="brand-mark">TP</span>
+        <span>
+          <strong>Tech Peças</strong>
+          <small>Administração</small>
+        </span>
+      </a>
+
+      <div class="admin-sidebar-label">ADMINISTRAÇÃO</div>
+      <nav class="admin-sidebar-nav">
+        <a href="admin.html" class="">
+          <span class="admin-nav-icon">⌂</span>
+          <span>Início</span>
+        </a>
+        <a href="admin-catalogo.html" class="active">
+          <span class="admin-nav-icon">▦</span>
+          <span>Catálogo</span>
+        </a>
+        <a href="admin-pedidos.html" class="">
+          <span class="admin-nav-icon">≡</span>
+          <span>Pedidos</span>
+        </a>
+      </nav>
+
+      <div class="admin-sidebar-footer">
+        <div id="navAuth" class="nav-auth admin-nav-auth"></div>
+      </div>
+    </aside>
+
+    <div class="admin-workspace">
+      <header class="admin-topbar">
+        <div>
+          <span class="admin-topbar-kicker">PAINEL ADMINISTRATIVO</span>
+          <h1>Catálogo</h1>
+        </div>
+        <div id="adminIdentity" class="admin-identity"></div>
+      </header>
+
+      <div class="admin-workspace-content">
+        <section id="adminCatalog" class="admin-section admin-page-section">
+          <div class="admin-section-head">
+            <div>
+              <span class="section-label dark-label">CATÁLOGO</span>
+              <h2>Produtos</h2>
+              <p class="admin-section-description">Cadastre, edite, remova, ative e acompanhe o estoque dos produtos.</p>
+            </div>
+            <button id="adminNewProduct" class="primary-cta button-reset" type="button">Novo produto <span>+</span></button>
+          </div>
+
+          <div class="admin-product-layout">
+            <aside class="admin-editor">
+              <div class="admin-editor-head">
+                <div>
+                  <span class="section-label dark-label">EDIÇÃO</span>
+                  <h3 id="adminFormTitle">Cadastrar produto</h3>
+                </div>
+                <button id="adminCancelEdit" type="button" class="admin-text-button" style="display:none;">Cancelar</button>
+              </div>
+
+              <form id="adminProductForm" class="admin-form">
+                <input type="hidden" id="adminProductId">
+                <div class="admin-field-grid">
+                  <label class="field-wide">Nome da peça
+                    <input id="adminNome" type="text" required placeholder="Ex.: Pastilha de freio dianteira">
+                  </label>
+                  <label>SKU
+                    <input id="adminSku" type="text" required placeholder="FREIO-001">
+                  </label>
+                  <label>Fabricante
+                    <input id="adminFabricante" type="text" placeholder="Bosch">
+                  </label>
+                  <label>Categoria
+                    <input id="adminCategoria" type="text" placeholder="Freios">
+                  </label>
+                  <label>Preço
+                    <input id="adminPreco" type="number" min="0" step="0.01" placeholder="129.90">
+                  </label>
+                  <label>Estoque
+                    <input id="adminEstoque" type="number" min="0" step="1" value="0">
+                  </label>
+                  <label class="field-wide">URL da imagem
+                    <input id="adminImagem" type="url" placeholder="https://...">
+                  </label>
+                  <label class="field-wide">Descrição
+                    <textarea id="adminDescricao" rows="4" placeholder="Descrição do produto"></textarea>
+                  </label>
+                </div>
+
+                <label class="admin-active-check">
+                  <input id="adminAtivo" type="checkbox" checked>
+                  <span>Produto ativo e visível no catálogo</span>
+                </label>
+
+                <div class="admin-compat-box">
+                  <div>
+                    <h4>Compatibilidades</h4>
+                    <p>Uma por linha no formato: Marca | Modelo | Ano inicial | Ano final | Observação</p>
+                  </div>
+                  <textarea id="adminCompatibilidades" rows="5" placeholder="Chevrolet | Onix | 2020 | 2026 | 1.0 Turbo&#10;Chevrolet | Onix Plus | 2020 | 2026 |"></textarea>
+                </div>
+
+                <button id="adminSaveProduct" type="submit" class="primary-cta button-reset admin-save-button">
+                  Salvar produto <span>→</span>
+                </button>
+              </form>
+            </aside>
+
+            <div class="admin-products-panel">
+              <div class="admin-list-toolbar">
+                <input id="adminProductSearch" type="search" placeholder="Buscar produto, SKU ou fabricante">
+                <span id="adminProductCount">0 produtos</span>
+              </div>
+              <div id="adminProductsList" class="admin-products-list"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>
