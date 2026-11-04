@@ -93,7 +93,8 @@ function storeSafeImage(url) {
 
 function storeCatalogCard(product) {
   const image = storeSafeImage(product.imagem_url);
-  const available = Number(product.estoque) > 0 && product.preco_site !== null;
+  const demoImported = Number(product.auto_importado) === 1;
+  const available = (demoImported || Number(product.estoque) > 0) && product.preco_site !== null;
 
   return '<article class="catalog-card">' +
     '<div class="catalog-card-media">' +
@@ -112,8 +113,10 @@ function storeCatalogCard(product) {
       '<div class="catalog-card-bottom">' +
         '<div>' +
           '<strong class="catalog-price">' + (product.preco_site !== null ? storeMoney(product.preco_site) : 'Consultar') + '</strong>' +
-          '<small class="' + (Number(product.estoque) > 0 ? 'stock-ok' : 'stock-out') + '">' +
-            (Number(product.estoque) > 0 ? Number(product.estoque) + ' em estoque' : 'Indisponível') +
+          '<small class="' + (available ? 'stock-ok' : 'stock-out') + '">' +
+            (demoImported
+              ? 'Disponível no projeto'
+              : (Number(product.estoque) > 0 ? Number(product.estoque) + ' em estoque' : 'Indisponível')) +
           '</small>' +
         '</div>' +
         '<button type="button" class="primary-cta button-reset add-cart-button" data-product-id="' + Number(product.id) + '"' +
