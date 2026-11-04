@@ -85,6 +85,30 @@ async function ensureStoreSchema() {
     changes.push('pecas.ativo');
   }
 
+  if (await ensureColumn('pecas', 'auto_importado', 'TINYINT(1) NOT NULL DEFAULT 0')) {
+    changes.push('pecas.auto_importado');
+  }
+
+  if (await ensureColumn('pecas', 'origem_tipo', "VARCHAR(30) NOT NULL DEFAULT 'proprio'")) {
+    changes.push('pecas.origem_tipo');
+  }
+
+  if (await ensureColumn('pecas', 'origem_nome', 'VARCHAR(150) NULL')) {
+    changes.push('pecas.origem_nome');
+  }
+
+  if (await ensureColumn('pecas', 'origem_url', 'VARCHAR(700) NULL')) {
+    changes.push('pecas.origem_url');
+  }
+
+  if (await ensureColumn('pecas', 'preco_referencia', 'DECIMAL(10,2) NULL')) {
+    changes.push('pecas.preco_referencia');
+  }
+
+  if (await ensureColumn('pecas', 'auto_import_term', 'VARCHAR(255) NULL')) {
+    changes.push('pecas.auto_import_term');
+  }
+
   if (await ensureColumn('pedidos', 'subtotal', 'DECIMAL(10,2) NOT NULL DEFAULT 0')) {
     changes.push('pedidos.subtotal');
   }
@@ -2008,6 +2032,107 @@ app.get('/api/pedidos/:id', async (req, res) => {
   }
 });
 
+async function hasActiveCatalogMatch({ termo, marca, modelo, ano }) {
+  const like = '%' + termo + '%';
+  const params = [like, like, like];
+  let compatibility = '';
+
+  if (marca && modelo && ano) {
+    compatibility = `
+      AND EXISTS (
+        SELECT 1 FROM compatibilidades c
+        WHERE c.peca_id = p.id
+          AND LOWER(c.marca) = LOWER(?)
+          AND LOWER(c.modelo) = LOWER(?)
+          AND ? BETWEEN c.ano_inicio AND c.ano_fim
+      )`;
+    params.push(marca, modelo, ano);
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT p.id
+     FROM pecas p
+     WHERE p.ativo = 1
+       AND (p.nome LIKE ? OR p.fabricante LIKE ? OR p.categoria LIKE ?)
+       ${compatibility}
+     LIMIT 1`,
+    params
+  );
+
+  return rows.length > 0;
+}
+
+function externalDraftSku(product) {
+  const source = [
+    product.productId || '',
+    product.title || '',
+    product.source || '',
+    product.productLink || ''
+  ].join('|');
+
+  return 'EXT-' + crypto.createHash('sha1').update(source).digest('hex').slice(0, 12).toUpperCase();
+}
+
+async function autoImportExternalDrafts({ termo, marca, modelo, ano, products }) {
+  const candidates = (Array.isArray(products) ? products : [])
+    .map((product) => ({
+      ...product,
+      numericPrice: Number(product.extractedPrice)
+    }))
+    .filter((product) => Number.isFinite(product.numericPrice) && product.numericPrice > 0)
+    .sort((a, b) => b.numericPrice - a.numericPrice)
+    .slice(0, 2);
+
+  if (!candidates.length) return [];
+
+  const imported = [];
+
+  for (const product of candidates) {
+    const sku = externalDraftSku(product);
+    const suggestedPrice = Math.round(product.numericPrice * 0.8 * 100) / 100;
+    const sourceUrl = /^https?:\/\//i.test(product.productLink || '') ? product.productLink : null;
+    const thumbnail = /^https?:\/\//i.test(product.thumbnail || '') ? product.thumbnail : null;
+    const description =
+      'Rascunho importado automaticamente após busca sem resultado no catálogo. ' +
+      'Preço sugerido com 20% de desconto sobre a referência externa de ' +
+      product.numericPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) +
+      '. Revise fornecedor, disponibilidade, margem, compatibilidade e estoque antes de ativar.';
+
+    const [result] = await pool.execute(
+      `INSERT IGNORE INTO pecas
+       (nome, descricao, fabricante, categoria, sku, preco_site, estoque, imagem_url, ativo,
+        auto_importado, origem_tipo, origem_nome, origem_url, preco_referencia, auto_import_term)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, 1, 'internet', ?, ?, ?, ?)`,
+      [
+        normalizeText(product.title) || termo,
+        description,
+        null,
+        'Sugestão automática',
+        sku,
+        suggestedPrice,
+        thumbnail,
+        normalizeText(product.source) || 'Loja externa',
+        sourceUrl,
+        product.numericPrice,
+        normalizeText([termo, marca, modelo, ano].filter(Boolean).join(' | ')).slice(0, 255)
+      ]
+    );
+
+    if (result.affectedRows) {
+      imported.push({
+        id: result.insertId,
+        nome: normalizeText(product.title) || termo,
+        sku,
+        precoReferencia: product.numericPrice,
+        precoSugerido: suggestedPrice,
+        origem: normalizeText(product.source) || 'Loja externa'
+      });
+    }
+  }
+
+  return imported;
+}
+
 // -------------------- OFERTAS EXTERNAS --------------------
 
 app.post('/api/ofertas-externas/pesquisar', async (req, res) => {
@@ -2023,10 +2148,27 @@ app.post('/api/ofertas-externas/pesquisar', async (req, res) => {
   try {
     const result = await searchExternalProducts({ termo, marca, modelo, ano });
 
+    let autoImportados = [];
+
+    if (result.configured && Array.isArray(result.products) && result.products.length) {
+      const hasCatalog = await hasActiveCatalogMatch({ termo, marca, modelo, ano });
+
+      if (!hasCatalog) {
+        autoImportados = await autoImportExternalDrafts({
+          termo,
+          marca,
+          modelo,
+          ano,
+          products: result.products
+        });
+      }
+    }
+
     return res.json({
       ok: true,
       termo,
       filtros: marca && modelo && ano ? { marca, modelo, ano } : null,
+      autoImportados,
       ...result
     });
   } catch (error) {
