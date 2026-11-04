@@ -5551,3 +5551,34 @@ body.search-request-active * {
   font-size: .75rem;
   font-weight: 850;
 }
+
+
+/* ===== TECH PECAS - FINALIZACAO DO PEDIDO ===== */
+.payment-result-actions {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem;
+}
+
+.payment-result-actions .primary-cta,
+.payment-result-actions .secondary-cta {
+  text-decoration: none;
+}
+
+.checkout-submit:disabled {
+  opacity: .72;
+  pointer-events: none;
+}
+
+@media (max-width: 560px) {
+  .payment-result-actions {
+    flex-direction: column;
+  }
+
+  .payment-result-actions .primary-cta,
+  .payment-result-actions .secondary-cta {
+    width: 100%;
+    justify-content: center;
+  }
+}
