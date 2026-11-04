@@ -318,6 +318,7 @@ function storeStartPaymentPolling(pedidoId) {
           statusEl.textContent = 'Pagamento confirmado. Pedido pago.';
           statusEl.className = 'payment-live-status confirmed';
         }
+        storePendingOrderId = null;
         storeStopPaymentPolling();
         return;
       }
@@ -327,6 +328,7 @@ function storeStartPaymentPolling(pedidoId) {
           statusEl.textContent = 'Pagamento confirmado, mas o estoque precisa ser revisado pela loja.';
           statusEl.className = 'payment-live-status attention';
         }
+        storePendingOrderId = null;
         storeStopPaymentPolling();
         return;
       }
@@ -473,14 +475,14 @@ async function storeSubmitCheckout(event) {
     }
 
     storeSaveCart([]);
-    storePendingOrderId = null;
+    storePendingOrderId = pedidoId;
     storeRenderPaymentResult(payment, pedidoId);
   } finally {
     if (button) {
       button.disabled = false;
-      if (!storePendingOrderId) {
-        button.innerHTML = 'Criar pedido <span>→</span>';
-      }
+      button.innerHTML = storePendingOrderId
+        ? 'Atualizar pagamento <span>→</span>'
+        : 'Criar pedido <span>→</span>';
     }
   }
 }
@@ -545,12 +547,30 @@ async function storeLoadOrders() {
         '<span>' + new Date(order.criado_em).toLocaleString('pt-BR') + '</span>' +
         '<span>' + (order.forma_pagamento === 'pix' ? 'Pix' : 'Cartão') + '</span>' +
       '</div>' +
+      (['pagamento_recusado','vencido','cancelado'].includes(order.status)
+        ? '<div class="order-retry-row"><a class="secondary-cta" href="carrinho.html?pedido=' + Number(order.id) + '">Tentar pagamento novamente</a></div>'
+        : '') +
     '</article>';
   }).join('');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   storeUpdateCartBadges();
+
+  const retryPedidoId = Number(new URLSearchParams(window.location.search).get('pedido') || 0);
+  if (retryPedidoId && document.getElementById('checkoutForm')) {
+    storePendingOrderId = retryPedidoId;
+    const paymentResult = document.getElementById('paymentResult');
+    if (paymentResult) {
+      paymentResult.style.display = 'block';
+      paymentResult.innerHTML =
+        '<div class="payment-success-head"><span class="section-label dark-label">NOVA TENTATIVA</span>' +
+        '<h2>Pedido #' + retryPedidoId + '</h2>' +
+        '<p>Revise os dados do pagador e gere uma nova tentativa de pagamento.</p></div>';
+    }
+    const submit = document.getElementById('checkoutSubmit');
+    if (submit) submit.innerHTML = 'Tentar pagamento novamente <span>→</span>';
+  }
 
   const checkoutEmailField = document.getElementById('checkoutEmail');
   const currentUserForCheckout = getCurrentUser();
