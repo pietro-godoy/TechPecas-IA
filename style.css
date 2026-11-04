@@ -5968,3 +5968,72 @@ body.search-request-active * {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ===== TECH PECAS - ADMIN PAGINAS SEPARADAS ===== */
+.admin-page-section {
+  margin-top: 0 !important;
+}
+
+.admin-home-actions {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.admin-home-card {
+  min-height: 170px;
+  padding: 1.15rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid #dfe2e7;
+  border-radius: 14px;
+  background: #fff;
+  color: #17191d;
+  text-decoration: none;
+  box-shadow: 0 6px 20px rgba(20,24,30,.025);
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+
+.admin-home-card:hover {
+  transform: translateY(-2px);
+  border-color: #cfd3d9;
+  box-shadow: 0 12px 30px rgba(20,24,30,.06);
+}
+
+.admin-home-icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #17191d;
+  color: #fff;
+  font-size: 1rem;
+}
+
+.admin-home-card h3 {
+  margin: .35rem 0 .3rem;
+  font-size: 1.1rem;
+}
+
+.admin-home-card p {
+  color: #83878e;
+  font-size: .72rem;
+  line-height: 1.5;
+}
+
+.admin-home-arrow {
+  color: #c74750;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+@media (max-width: 760px) {
+  .admin-home-actions {
+    grid-template-columns: 1fr;
+  }
+}
