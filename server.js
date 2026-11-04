@@ -162,6 +162,12 @@ async function ensureStoreSchema() {
     'UPDATE pecas SET ativo = 1 WHERE auto_importado = 1'
   );
 
+  await pool.query(
+    `UPDATE pecas
+     SET estoque = 8 + MOD(CRC32(COALESCE(sku, CONCAT('AUTO-', id))), 17)
+     WHERE auto_importado = 1 AND estoque <= 0`
+  );
+
   const adminUsername = String(process.env.ADMIN_USERNAME || '').trim();
   if (adminUsername) {
     await pool.execute(
@@ -432,7 +438,6 @@ async function releaseOrderStock(conn, pedidoId) {
   );
 
   for (const item of itens) {
-    if (Number(item.auto_importado) === 1) continue;
     await conn.execute(
       'UPDATE pecas SET estoque = estoque + ? WHERE id = ?',
       [Number(item.quantidade), Number(item.peca_id)]
@@ -466,14 +471,12 @@ async function reserveOrderStockAgain(conn, pedidoId) {
   );
 
   for (const item of itens) {
-    if (Number(item.ativo) !== 1) return false;
-    if (Number(item.auto_importado) !== 1 && Number(item.estoque) < Number(item.quantidade)) {
+    if (Number(item.ativo) !== 1 || Number(item.estoque) < Number(item.quantidade)) {
       return false;
     }
   }
 
   for (const item of itens) {
-    if (Number(item.auto_importado) === 1) continue;
     await conn.execute(
       'UPDATE pecas SET estoque = estoque - ? WHERE id = ?',
       [Number(item.quantidade), Number(item.peca_id)]
@@ -1891,7 +1894,7 @@ app.post('/api/pedidos', async (req, res) => {
         throw new Error('Produto indisponível: ' + item.pecaId);
       }
 
-      if (Number(produto.auto_importado) !== 1 && Number(produto.estoque) < item.quantidade) {
+      if (Number(produto.estoque) < item.quantidade) {
         throw new Error('Estoque insuficiente para ' + produto.nome);
       }
 
@@ -1932,13 +1935,10 @@ app.post('/api/pedidos', async (req, res) => {
         [pedidoId, item.pecaId, item.quantidade, item.preco.toFixed(2)]
       );
 
-      const produto = mapa.get(item.pecaId);
-      if (Number(produto?.auto_importado) !== 1) {
-        await conn.execute(
-          'UPDATE pecas SET estoque = estoque - ? WHERE id = ?',
-          [item.quantidade, item.pecaId]
-        );
-      }
+      await conn.execute(
+        'UPDATE pecas SET estoque = estoque - ? WHERE id = ?',
+        [item.quantidade, item.pecaId]
+      );
     }
 
     await conn.commit();
@@ -2109,26 +2109,29 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
   for (const product of candidates) {
     const sku = externalDraftSku(product);
     const suggestedPrice = Math.round(product.numericPrice * 0.8 * 100) / 100;
+    const stockSeed = parseInt(crypto.createHash('sha1').update(sku).digest('hex').slice(0, 8), 16);
+    const demoStock = 8 + (stockSeed % 17);
     const sourceUrl = /^https?:\/\//i.test(product.productLink || '') ? product.productLink : null;
     const thumbnail = /^https?:\/\//i.test(product.thumbnail || '') ? product.thumbnail : null;
+    const vehicleText = [marca, modelo, ano].filter(Boolean).join(' ');
     const description =
-      'Rascunho importado automaticamente após busca sem resultado no catálogo. ' +
-      'Preço sugerido com 20% de desconto sobre a referência externa de ' +
-      product.numericPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) +
-      '. Revise fornecedor, disponibilidade, margem, compatibilidade e estoque antes de ativar.';
+      'Peça automotiva disponível no catálogo Tech Peças' +
+      (vehicleText ? ' para pesquisa relacionada a ' + vehicleText : '') +
+      '. Produto selecionado para demonstração do projeto, com preço promocional aplicado sobre a referência de mercado.';
 
     const [result] = await pool.execute(
       `INSERT IGNORE INTO pecas
        (nome, descricao, fabricante, categoria, sku, preco_site, estoque, imagem_url, ativo,
         auto_importado, origem_tipo, origem_nome, origem_url, preco_referencia, auto_import_term)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, 1, 'internet', ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'internet', ?, ?, ?, ?)`,
       [
         normalizeText(product.title) || termo,
         description,
-        null,
-        'Sugestão automática',
+        'Linha Tech Peças',
+        'Autopeça',
         sku,
         suggestedPrice,
+        demoStock,
         thumbnail,
         normalizeText(product.source) || 'Loja externa',
         sourceUrl,
@@ -2144,6 +2147,7 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
         sku,
         precoReferencia: product.numericPrice,
         precoSugerido: suggestedPrice,
+        estoque: demoStock,
         origem: normalizeText(product.source) || 'Loja externa'
       });
     }
