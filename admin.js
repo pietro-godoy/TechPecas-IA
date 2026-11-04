@@ -291,6 +291,52 @@ async function adminChangeOrderStatus(id, status) {
   await Promise.all([adminLoadOrders(), adminLoadSummary()]);
 }
 
+async function adminLoadAsaasStatus() {
+  const container = document.getElementById('asaasAdminStatus');
+  if (!container) return;
+
+  const result = await apiCall('/pagamentos/asaas/status', { method: 'GET' });
+
+  if (!result.ok) {
+    container.innerHTML = '<strong>Não foi possível verificar o Asaas.</strong>';
+    return;
+  }
+
+  container.innerHTML =
+    '<div><strong>' + (result.configured ? 'API configurada' : 'API ainda não configurada') + '</strong>' +
+    '<span>Ambiente: ' + tpEscape(result.environment || 'sandbox') + '</span></div>' +
+    '<div class="asaas-status-dot ' + (result.configured ? 'ready' : 'pending') + '"></div>';
+}
+
+async function adminSetupAsaasWebhook() {
+  const button = document.getElementById('asaasSetupWebhook');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Configurando...';
+  }
+
+  const result = await apiCall('/admin/asaas/webhook', {
+    method: 'POST',
+    body: JSON.stringify({})
+  });
+
+  if (button) {
+    button.disabled = false;
+    button.textContent = 'Configurar Webhook';
+  }
+
+  if (!result.ok) {
+    return showError(result.msg || 'Não foi possível configurar o Webhook do Asaas.');
+  }
+
+  showSuccess(
+    result.created
+      ? 'Webhook criado no Asaas Sandbox.'
+      : 'O Webhook do Tech Peças já estava configurado.',
+    'Asaas'
+  );
+}
+
 async function adminBoot() {
   const content = document.getElementById('adminContent');
   const blocked = document.getElementById('adminBlocked');
@@ -318,7 +364,7 @@ async function adminBoot() {
     identity.innerHTML = '<span>Administrador</span><strong>' + tpEscape(validation.admin?.username || user.username) + '</strong>';
   }
 
-  await Promise.all([adminLoadSummary(), adminLoadProducts(), adminLoadOrders()]);
+  await Promise.all([adminLoadSummary(), adminLoadProducts(), adminLoadOrders(), adminLoadAsaasStatus()]);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -334,6 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
     adminRenderProducts(event.target.value);
   });
   document.getElementById('adminRefreshOrders')?.addEventListener('click', adminLoadOrders);
+  document.getElementById('asaasSetupWebhook')?.addEventListener('click', adminSetupAsaasWebhook);
 
   document.getElementById('adminProductsList')?.addEventListener('click', (event) => {
     const edit = event.target.closest('[data-admin-edit]');
