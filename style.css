@@ -5667,3 +5667,41 @@ body.search-request-active * {
 .order-card-paid.highlighted {
   box-shadow: 0 0 0 2px rgba(45,154,97,.12) !important;
 }
+
+
+/* ===== TECH PECAS - CANCELAR PEDIDO ===== */
+.order-actions-row {
+  margin-top: .85rem;
+  padding-top: .85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem;
+  border-top: 1px solid #eeebe6;
+}
+
+.order-cancel-button {
+  min-height: 38px;
+  padding: .55rem .85rem;
+  border: 1px solid #e2b8bc;
+  border-radius: 999px;
+  background: #fff;
+  color: #a53c45;
+  font: inherit;
+  font-size: .7rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.order-cancel-button:hover {
+  background: #fff4f5;
+  border-color: #cf8f95;
+}
+
+.order-cancel-button:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
+.order-card-pending:has(.order-cancel-button) {
+  position: relative;
+}
