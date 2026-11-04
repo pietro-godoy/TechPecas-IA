@@ -5062,3 +5062,25 @@ body.search-request-active * {
     justify-self: center;
   }
 }
+
+
+/* ===== TECH PECAS - PAYMENT STATES ===== */
+.payment-live-status.attention {
+  background: #fff5db;
+  color: #8a6517;
+}
+
+.order-retry-row {
+  margin-top: .85rem;
+  padding-top: .85rem;
+  border-top: 1px solid #eeebe6;
+}
+
+.order-retry-row .secondary-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: .55rem .8rem;
+  font-size: .7rem;
+}
