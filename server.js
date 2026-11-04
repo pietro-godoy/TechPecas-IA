@@ -2066,7 +2066,7 @@ app.get('/api/pedidos/:id', async (req, res) => {
 
 async function hasActiveCatalogMatch({ termo, marca, modelo, ano }) {
   const like = '%' + termo + '%';
-  const params = [like, like, like];
+  const params = [like, like, like, like];
   let compatibility = '';
 
   if (marca && modelo && ano) {
@@ -2085,7 +2085,7 @@ async function hasActiveCatalogMatch({ termo, marca, modelo, ano }) {
     `SELECT p.id
      FROM pecas p
      WHERE p.ativo = 1
-       AND (p.nome LIKE ? OR p.fabricante LIKE ? OR p.categoria LIKE ?)
+       AND (p.nome LIKE ? OR p.fabricante LIKE ? OR p.categoria LIKE ? OR p.auto_import_term LIKE ?)
        ${compatibility}
      LIMIT 1`,
     params
@@ -2288,7 +2288,7 @@ app.post('/api/pecas/pesquisar', async (req, res) => {
 
   try {
     const like = `%${termo}%`;
-    const params = [like, like, like];
+    const params = [like, like, like, like];
     let compatClause = '';
 
     if (marca && modelo && ano) {
@@ -2312,11 +2312,14 @@ app.post('/api/pecas/pesquisar', async (req, res) => {
          p.categoria,
          p.preco_site,
          p.estoque,
+         p.imagem_url,
+         p.sku,
+         p.auto_importado,
          MIN(CASE WHEN o.disponivel = 1 THEN o.preco END) AS menor_preco_parceiro,
          COUNT(CASE WHEN o.disponivel = 1 THEN 1 END) AS total_ofertas
        FROM pecas p
        LEFT JOIN ofertas o ON o.peca_id = p.id
-       WHERE (p.nome LIKE ? OR p.fabricante LIKE ? OR p.categoria LIKE ?)
+       WHERE (p.nome LIKE ? OR p.fabricante LIKE ? OR p.categoria LIKE ? OR p.auto_import_term LIKE ?)
        ${compatClause}
        GROUP BY p.id
        ORDER BY
@@ -2336,7 +2339,8 @@ app.post('/api/pecas/pesquisar', async (req, res) => {
         ...p,
         preco_site: p.preco_site === null ? null : Number(p.preco_site),
         menor_preco_parceiro: p.menor_preco_parceiro === null ? null : Number(p.menor_preco_parceiro),
-        total_ofertas: Number(p.total_ofertas || 0)
+        total_ofertas: Number(p.total_ofertas || 0),
+        auto_importado: Number(p.auto_importado || 0)
       }))
     });
   } catch (error) {
