@@ -72,7 +72,9 @@
         </div>
 
         <form id="diagnosticoForm" class="tech-form">
-          <div class="form-grid vehicle-grid">
+          <div id="diagGarageVehicle" class="search-garage-vehicle" style="display:none;"></div>
+
+          <div id="diagManualVehicleFields" class="form-grid vehicle-grid">
             <label>Marca
               <input type="text" id="diagMarca" placeholder="Chevrolet" required>
             </label>
@@ -110,7 +112,9 @@
             <input type="text" id="pecaTermo" placeholder="Ex.: pastilha de freio" required>
           </label>
 
-          <div class="filter-switch-row">
+          <div id="pecaGarageVehicle" class="search-garage-vehicle" style="display:none;"></div>
+
+          <div id="pecaFilterSwitchRow" class="filter-switch-row">
             <label class="check-line">
               <input type="checkbox" id="usarFiltroVeiculo">
               <span>Usar dados do veículo</span>
