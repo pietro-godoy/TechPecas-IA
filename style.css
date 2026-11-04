@@ -6037,3 +6037,66 @@ body.search-request-active * {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ===== TECH PECAS - VEICULO AUTOMATICO DA GARAGEM ===== */
+.search-garage-vehicle {
+  margin-bottom: 1rem;
+  padding: .8rem .9rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid #dfe3e8;
+  border-radius: 12px;
+  background: #f7f8f9;
+}
+
+.search-garage-vehicle-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+}
+
+.search-garage-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #2d9a61;
+  box-shadow: 0 0 0 5px rgba(45,154,97,.1);
+}
+
+.search-garage-vehicle small {
+  display: block;
+  margin-bottom: .15rem;
+  color: #898e95;
+  font-size: .56rem;
+  font-weight: 850;
+  letter-spacing: .1em;
+}
+
+.search-garage-vehicle strong {
+  display: block;
+  color: #24272c;
+  font-size: .78rem;
+}
+
+.search-garage-vehicle > a {
+  flex: 0 0 auto;
+  color: #a94149;
+  font-size: .66rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.search-garage-vehicle > a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 560px) {
+  .search-garage-vehicle {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
