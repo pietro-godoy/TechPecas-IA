@@ -366,6 +366,43 @@ async function adminSetupAsaasWebhook() {
   );
 }
 
+function adminInitSidebarNavigation() {
+  const links = Array.from(document.querySelectorAll('.admin-sidebar-nav a[href^="#"]'));
+  if (!links.length) return;
+
+  links.forEach((link) => {
+    link.addEventListener('click', () => {
+      links.forEach((item) => item.classList.remove('active'));
+      link.classList.add('active');
+    });
+  });
+
+  const sections = links
+    .map((link) => document.querySelector(link.getAttribute('href')))
+    .filter(Boolean);
+
+  if (!sections.length || !('IntersectionObserver' in window)) return;
+
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries
+      .filter((entry) => entry.isIntersecting)
+      .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+    if (!visible) return;
+
+    const activeLink = links.find((link) => link.getAttribute('href') === '#' + visible.target.id);
+    if (!activeLink) return;
+
+    links.forEach((item) => item.classList.remove('active'));
+    activeLink.classList.add('active');
+  }, {
+    rootMargin: '-110px 0px -55% 0px',
+    threshold: [0.1, 0.3, 0.6]
+  });
+
+  sections.forEach((section) => observer.observe(section));
+}
+
 async function adminBoot() {
   const content = document.getElementById('adminContent');
   const blocked = document.getElementById('adminBlocked');
@@ -386,7 +423,7 @@ async function adminBoot() {
   }
 
   blocked.style.display = 'none';
-  content.style.display = 'block';
+  content.style.display = 'grid';
 
   const identity = document.getElementById('adminIdentity');
   if (identity) {
@@ -397,6 +434,7 @@ async function adminBoot() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  adminInitSidebarNavigation();
   adminBoot();
 
   document.getElementById('adminProductForm')?.addEventListener('submit', adminSaveProduct);
