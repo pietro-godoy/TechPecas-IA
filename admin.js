@@ -1,5 +1,7 @@
 let adminProducts = [];
 let adminOrders = [];
+let adminSandbox = false;
+let adminOrdersPollTimer = null;
 
 function adminMoney(value) {
   return Number(value || 0).toLocaleString('pt-BR', {
@@ -268,6 +270,25 @@ async function adminDeleteProduct(id) {
   );
 }
 
+function adminOrderCanConfirm(order) {
+  return adminSandbox &&
+    Boolean(order.asaas_payment_id) &&
+    ['aguardando_pagamento', 'analise_risco', 'vencido'].includes(order.status);
+}
+
+function adminOrderCanCancel(order) {
+  return ['aguardando_pagamento', 'analise_risco', 'pagamento_recusado', 'vencido'].includes(order.status);
+}
+
+function adminOrderCanRefund(order) {
+  return Boolean(order.asaas_payment_id) &&
+    ['pago', 'pago_revisar_estoque', 'preparando'].includes(order.status);
+}
+
+function adminOrderCanManageLogistics(order) {
+  return ['pago', 'pago_revisar_estoque', 'preparando', 'enviado', 'concluido'].includes(order.status);
+}
+
 function adminRenderOrders() {
   const container = document.getElementById('adminOrdersList');
   if (!container) return;
@@ -278,92 +299,213 @@ function adminRenderOrders() {
   }
 
   container.innerHTML = adminOrders.map((order) => {
-    return '<article class="admin-order-row">' +
-      '<div><span class="order-number">PEDIDO #' + Number(order.id) + '</span><h3>' + tpEscape(order.username || 'Cliente') + '</h3><p>' + tpEscape(order.email || '') + '</p></div>' +
-      '<div><span>Itens</span><strong>' + Number(order.total_itens || 0) + '</strong></div>' +
-      '<div><span>Total</span><strong>' + adminMoney(order.valor_total) + '</strong></div>' +
-      '<div><span>Pagamento</span><strong>' + (order.forma_pagamento === 'pix' ? 'Pix' : 'Cartão') + '</strong></div>' +
-      '<label class="admin-order-status">Status' +
-        '<select data-order-status="' + Number(order.id) + '">' +
-          ['aguardando_pagamento','analise_risco','pagamento_recusado','vencido','pago','pago_revisar_estoque','preparando','enviado','concluido','cancelado','estorno_em_processamento','estornado_parcial','estornado','chargeback','chargeback_em_disputa','chargeback_em_reversao']
-            .map((status) => '<option value="' + status + '"' + (status === order.status ? ' selected' : '') + '>' + adminStatusLabel(status) + '</option>')
-            .join('') +
-        '</select>' +
-      '</label>' +
+    const statusClass = ['pago','preparando','enviado','concluido'].includes(order.status)
+      ? 'paid'
+      : (['cancelado','estornado','estorno_em_processamento','pagamento_recusado','vencido'].includes(order.status) ? 'danger' : 'pending');
+
+    const paymentActions =
+      (adminOrderCanConfirm(order)
+        ? '<button type="button" class="admin-order-action success" data-admin-confirm-payment="' + Number(order.id) + '">Confirmar pagamento</button>'
+        : '') +
+      (adminOrderCanRefund(order)
+        ? '<button type="button" class="admin-order-action warning" data-admin-refund="' + Number(order.id) + '">Estornar</button>'
+        : '') +
+      (adminOrderCanCancel(order)
+        ? '<button type="button" class="admin-order-action danger" data-admin-cancel="' + Number(order.id) + '">Cancelar</button>'
+        : '');
+
+    const logistics = adminOrderCanManageLogistics(order)
+      ? '<label class="admin-logistics-select">Andamento' +
+          '<select data-order-status="' + Number(order.id) + '">' +
+            '<option value="" selected disabled>Alterar etapa</option>' +
+            '<option value="preparando">Preparando</option>' +
+            '<option value="enviado">Enviado</option>' +
+            '<option value="concluido">Concluído</option>' +
+          '</select>' +
+        '</label>'
+      : '';
+
+    return '<article class="admin-order-card">' +
+      '<div class="admin-order-card-head">' +
+        '<div>' +
+          '<span class="order-number">PEDIDO #' + Number(order.id) + '</span>' +
+          '<h3>' + tpEscape(order.username || 'Cliente') + '</h3>' +
+          '<p>' + tpEscape(order.email || '') + '</p>' +
+        '</div>' +
+        '<div class="admin-order-total"><span>Total</span><strong>' + adminMoney(order.valor_total) + '</strong></div>' +
+      '</div>' +
+      '<div class="admin-order-info-grid">' +
+        '<div><span>Status</span><strong class="admin-order-status-chip ' + statusClass + '">' + adminStatusLabel(order.status) + '</strong></div>' +
+        '<div><span>Pagamento</span><strong>' + (order.forma_pagamento === 'pix' ? 'Pix' : 'Cartão') + '</strong></div>' +
+        '<div><span>Itens</span><strong>' + Number(order.total_itens || 0) + '</strong></div>' +
+        '<div><span>Data</span><strong>' + new Date(order.criado_em).toLocaleString('pt-BR') + '</strong></div>' +
+      '</div>' +
+      (order.resumo_itens ? '<p class="admin-order-summary">' + tpEscape(order.resumo_itens) + '</p>' : '') +
+      '<div class="admin-order-actions-bar">' +
+        '<button type="button" class="admin-order-action" data-admin-order-details="' + Number(order.id) + '">Ver cliente e pedido</button>' +
+        paymentActions +
+        logistics +
+      '</div>' +
+      '<div id="admin-order-details-' + Number(order.id) + '" class="admin-order-details" style="display:none;"></div>' +
     '</article>';
   }).join('');
 }
 
-async function adminLoadOrders() {
+async function adminLoadOrders(options = {}) {
   const container = document.getElementById('adminOrdersList');
-  if (container) container.innerHTML = '<div class="admin-empty">Carregando pedidos...</div>';
+  const silent = options.silent === true;
+
+  if (container && !silent) {
+    container.innerHTML = '<div class="admin-empty">Carregando pedidos...</div>';
+  }
 
   const result = await apiCall('/admin/pedidos', { method: 'GET' });
   if (!result.ok) {
-    if (container) container.innerHTML = '<div class="admin-empty">' + tpEscape(result.msg || 'Não foi possível carregar os pedidos.') + '</div>';
+    if (container && !silent) {
+      container.innerHTML = '<div class="admin-empty">' + tpEscape(result.msg || 'Não foi possível carregar os pedidos.') + '</div>';
+    }
     return;
   }
 
-  adminOrders = Array.isArray(result.pedidos) ? result.pedidos : [];
-  adminRenderOrders();
+  adminSandbox = result.sandbox === true;
+  const nextOrders = Array.isArray(result.pedidos) ? result.pedidos : [];
+  const changed = JSON.stringify(nextOrders) !== JSON.stringify(adminOrders);
+  adminOrders = nextOrders;
+
+  if (!silent || changed) adminRenderOrders();
+}
+
+async function adminShowOrderDetails(id) {
+  const box = document.getElementById('admin-order-details-' + Number(id));
+  if (!box) return;
+
+  if (box.dataset.loaded === '1') {
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    return;
+  }
+
+  box.style.display = 'block';
+  box.innerHTML = '<div class="admin-empty">Carregando detalhes...</div>';
+
+  const result = await apiCall('/admin/pedidos/' + Number(id) + '/detalhes', { method: 'GET' });
+  if (!result.ok) {
+    box.innerHTML = '<div class="admin-empty">' + tpEscape(result.msg || 'Não foi possível carregar o pedido.') + '</div>';
+    return;
+  }
+
+  const pedido = result.pedido || {};
+  const usuario = result.usuario || {};
+  const endereco = pedido.endereco_entrega || {};
+  const itens = Array.isArray(result.itens) ? result.itens : [];
+
+  box.innerHTML =
+    '<div class="admin-customer-profile">' +
+      '<div><span class="section-label dark-label">CLIENTE</span><h4>' + tpEscape(usuario.username || 'Cliente') + '</h4></div>' +
+      '<div class="admin-profile-grid">' +
+        '<div><span>ID</span><strong>#' + Number(usuario.id || 0) + '</strong></div>' +
+        '<div><span>E-mail</span><strong>' + tpEscape(usuario.email || 'Não informado') + '</strong></div>' +
+      '</div>' +
+      '<div class="admin-address-block"><span>Endereço de entrega</span><strong>' +
+        tpEscape([
+          endereco.logradouro,
+          endereco.numero,
+          endereco.complemento,
+          endereco.cidade,
+          endereco.estado,
+          endereco.cep
+        ].filter(Boolean).join(', ') || 'Não informado') +
+      '</strong></div>' +
+    '</div>' +
+    '<div class="admin-order-items-detail">' +
+      '<span class="section-label dark-label">ITENS DO PEDIDO</span>' +
+      itens.map((item) =>
+        '<div class="admin-order-item-detail">' +
+          '<div><strong>' + tpEscape(item.nome || 'Produto') + '</strong><small>' + tpEscape(item.sku || '') + '</small></div>' +
+          '<span>' + Number(item.quantidade || 0) + ' × ' + adminMoney(item.preco_unitario) + '</span>' +
+        '</div>'
+      ).join('') +
+    '</div>';
+
+  box.dataset.loaded = '1';
 }
 
 async function adminChangeOrderStatus(id, status) {
+  if (!status) return;
+
   const result = await apiCall('/admin/pedidos/' + Number(id) + '/status', {
     method: 'PATCH',
     body: JSON.stringify({ status })
   });
 
   if (!result.ok) return showError(result.msg || 'Não foi possível atualizar o pedido.');
+  showSuccess('Andamento do pedido atualizado.');
   await Promise.all([adminLoadOrders(), adminLoadSummary()]);
 }
 
-async function adminLoadAsaasStatus() {
-  const container = document.getElementById('asaasAdminStatus');
-  if (!container) return;
+async function adminConfirmPayment(id) {
+  showConfirm(
+    'Confirmar o pagamento do pedido #' + id + ' no Asaas Sandbox? Esta ação simula o pagamento e o Webhook fará a atualização do status.',
+    async () => {
+      const result = await apiCall('/admin/pedidos/' + Number(id) + '/confirmar-pagamento', {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
 
-  const result = await apiCall('/pagamentos/asaas/status', { method: 'GET' });
-
-  if (!result.ok) {
-    container.innerHTML = '<strong>Não foi possível verificar o Asaas.</strong>';
-    return;
-  }
-
-  container.innerHTML =
-    '<div><strong>' + (result.configured ? 'API configurada' : 'API ainda não configurada') + '</strong>' +
-    '<span>Ambiente: ' + tpEscape(result.environment || 'sandbox') + '</span></div>' +
-    '<div class="asaas-status-dot ' + (result.configured ? 'ready' : 'pending') + '"></div>';
+      if (!result.ok) return showError(result.msg || 'Não foi possível confirmar o pagamento.');
+      showSuccess(result.msg || 'Pagamento confirmado no Sandbox.');
+      setTimeout(() => adminLoadOrders({ silent: true }), 1200);
+    },
+    null,
+    'Confirmar pagamento'
+  );
 }
 
-async function adminSetupAsaasWebhook() {
-  const button = document.getElementById('asaasSetupWebhook');
-  if (button) {
-    button.disabled = true;
-    button.textContent = 'Configurando...';
-  }
+async function adminRefundOrder(id) {
+  showConfirm(
+    'Deseja solicitar o estorno integral do pedido #' + id + '? O valor será devolvido pelo Asaas e o estoque será restaurado.',
+    async () => {
+      const result = await apiCall('/admin/pedidos/' + Number(id) + '/estornar', {
+        method: 'POST',
+        body: JSON.stringify({
+          motivo: 'Estorno integral solicitado pelo administrador do Tech Peças.'
+        })
+      });
 
-  const result = await apiCall('/admin/asaas/webhook', {
-    method: 'POST',
-    body: JSON.stringify({})
-  });
-
-  if (button) {
-    button.disabled = false;
-    button.textContent = 'Configurar Webhook';
-  }
-
-  if (!result.ok) {
-    return showError(result.msg || 'Não foi possível configurar o Webhook do Asaas.');
-  }
-
-  showSuccess(
-    result.created
-      ? 'Webhook criado no Asaas Sandbox.'
-      : (result.updated
-          ? 'Webhook existente atualizado com os eventos mais recentes.'
-          : 'Webhook do Tech Peças já estava configurado.'),
-    'Asaas'
+      if (!result.ok) return showError(result.msg || 'Não foi possível solicitar o estorno.');
+      showSuccess(result.msg || 'Estorno solicitado.');
+      await Promise.all([adminLoadOrders(), adminLoadSummary()]);
+    },
+    null,
+    'Estornar pedido'
   );
+}
+
+async function adminCancelOrder(id) {
+  showConfirm(
+    'Deseja cancelar o pedido #' + id + '? A cobrança pendente será removida do Asaas e o estoque reservado será devolvido.',
+    async () => {
+      const result = await apiCall('/admin/pedidos/' + Number(id) + '/cancelar', {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+
+      if (!result.ok) return showError(result.msg || 'Não foi possível cancelar o pedido.');
+      showSuccess(result.msg || 'Pedido cancelado.');
+      await Promise.all([adminLoadOrders(), adminLoadSummary()]);
+    },
+    null,
+    'Cancelar pedido'
+  );
+}
+
+function adminStartOrdersPolling() {
+  if (adminOrdersPollTimer) clearInterval(adminOrdersPollTimer);
+
+  adminOrdersPollTimer = setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      adminLoadOrders({ silent: true });
+    }
+  }, 5000);
 }
 
 function adminInitSidebarNavigation() {
@@ -430,7 +572,8 @@ async function adminBoot() {
     identity.innerHTML = '<span>Administrador</span><strong>' + tpEscape(validation.admin?.username || user.username) + '</strong>';
   }
 
-  await Promise.all([adminLoadSummary(), adminLoadProducts(), adminLoadOrders(), adminLoadAsaasStatus()]);
+  await Promise.all([adminLoadSummary(), adminLoadProducts(), adminLoadOrders()]);
+  adminStartOrdersPolling();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -447,7 +590,6 @@ document.addEventListener('DOMContentLoaded', () => {
     adminRenderProducts(event.target.value);
   });
   document.getElementById('adminRefreshOrders')?.addEventListener('click', adminLoadOrders);
-  document.getElementById('asaasSetupWebhook')?.addEventListener('click', adminSetupAsaasWebhook);
 
   document.getElementById('adminProductsList')?.addEventListener('click', (event) => {
     const edit = event.target.closest('[data-admin-edit]');
@@ -464,5 +606,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const select = event.target.closest('[data-order-status]');
     if (!select) return;
     adminChangeOrderStatus(Number(select.dataset.orderStatus), select.value);
+  });
+
+  document.getElementById('adminOrdersList')?.addEventListener('click', (event) => {
+    const details = event.target.closest('[data-admin-order-details]');
+    if (details) return adminShowOrderDetails(Number(details.dataset.adminOrderDetails));
+
+    const confirmPayment = event.target.closest('[data-admin-confirm-payment]');
+    if (confirmPayment) return adminConfirmPayment(Number(confirmPayment.dataset.adminConfirmPayment));
+
+    const refund = event.target.closest('[data-admin-refund]');
+    if (refund) return adminRefundOrder(Number(refund.dataset.adminRefund));
+
+    const cancel = event.target.closest('[data-admin-cancel]');
+    if (cancel) return adminCancelOrder(Number(cancel.dataset.adminCancel));
   });
 });
