@@ -66,6 +66,24 @@ async function registerUser(username, password, email = '') {
   return result;
 }
 
+async function syncCurrentUserRole() {
+  const current = getCurrentUser();
+  if (!current?.token) return current;
+
+  const result = await apiCall('/auth/me', { method: 'GET' });
+
+  if (!result.ok || !result.usuario) {
+    return current;
+  }
+
+  setCurrentUser({
+    ...result.usuario,
+    token: current.token
+  });
+
+  return getCurrentUser();
+}
+
 async function loginUser(username, password) {
   if (!username || !password) {
     return { ok: false, msg: 'Usuário e senha são obrigatórios' };
@@ -126,17 +144,25 @@ async function clearHistoryFor() {
   return result;
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  const current = getCurrentUser();
+document.addEventListener("DOMContentLoaded", async () => {
+  let current = getCurrentUser();
+
+  if (current?.token) {
+    current = await syncCurrentUserRole();
+  }
+
   const currentUsername = current?.username || null;
 
   if (current?.papel === 'admin') {
     const page = (window.location.pathname.split('/').pop() || 'index.html').toLowerCase();
 
     if (page !== 'admin.html' && page !== 'login.html') {
-      const target = page === 'catalogo.html'
-        ? 'admin.html#adminCatalog'
-        : (page === 'pedidos.html' ? 'admin.html#adminOrders' : 'admin.html#adminDashboard');
+      const target =
+        page === 'catalogo.html'
+          ? 'admin.html#adminCatalog'
+          : page === 'pedidos.html'
+            ? 'admin.html#adminOrders'
+            : 'admin.html#adminDashboard';
 
       window.location.replace(target);
       return;
