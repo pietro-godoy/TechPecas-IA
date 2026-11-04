@@ -437,8 +437,47 @@ async function storeCreateAsaasPayment(pedidoId, pagador) {
   });
 }
 
+async function storeCheckPaymentAvailability() {
+  const form = document.getElementById('checkoutForm');
+  const button = document.getElementById('checkoutSubmit');
+  if (!form || !button) return;
+
+  const result = await apiCall('/pagamentos/asaas/status', { method: 'GET' });
+
+  if (!result.ok || !result.configured) {
+    button.disabled = true;
+    button.innerHTML = 'Pagamento indisponível';
+    button.title = 'Configure o Asaas Sandbox no servidor para finalizar pedidos.';
+
+    let warning = document.getElementById('checkoutPaymentWarning');
+    if (!warning) {
+      warning = document.createElement('div');
+      warning.id = 'checkoutPaymentWarning';
+      warning.className = 'checkout-payment-warning';
+      form.insertBefore(warning, button);
+    }
+
+    warning.innerHTML =
+      '<strong>Pagamento ainda não configurado</strong>' +
+      '<span>O Asaas Sandbox precisa estar configurado no servidor antes de finalizar pedidos.</span>';
+    return;
+  }
+
+  button.disabled = false;
+  button.innerHTML = 'Finalizar pedido <span>→</span>';
+}
+
 async function storeSubmitCheckout(event) {
   event.preventDefault();
+
+  const asaasStatus = await apiCall('/pagamentos/asaas/status', { method: 'GET' });
+  if (!asaasStatus.ok || !asaasStatus.configured) {
+    showError(
+      'O pagamento ainda não está configurado no servidor. Configure o Asaas Sandbox antes de finalizar o pedido.',
+      'Pagamento indisponível'
+    );
+    return;
+  }
 
   const user = getCurrentUser();
   if (!user) {
@@ -661,6 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const cartItems = document.getElementById('cartItems');
   if (cartItems) {
     storeRenderCart();
+    storeCheckPaymentAvailability();
 
     cartItems.addEventListener('click', (event) => {
       const remove = event.target.closest('[data-remove-id]');
