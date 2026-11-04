@@ -1,11 +1,16 @@
 const express = require('express');
-const mysql = require('mysql2/promise');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
+
+const { pool } = require('./src/config/database');
+const { requireAdmin, requireUser, requireCustomer } = require('./src/middleware/authMiddleware');
+const authRoutes = require('./src/routes/authRoutes');
+const vehicleRoutes = require('./src/routes/vehicleRoutes');
+const catalogRoutes = require('./src/routes/catalogRoutes');
+const historyRoutes = require('./src/routes/historyRoutes');
+const systemRoutes = require('./src/routes/systemRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,42 +18,6 @@ const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${PORT}/api`;
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
 
 const aiCache = new Map();
-
-function buildDbSslOptions() {
-  if (process.env.DB_SSL !== 'true') return undefined;
-
-  const verifyCa = String(process.env.DB_SSL_VERIFY || '').trim().toLowerCase() === 'true';
-
-  if (!verifyCa) {
-    return { rejectUnauthorized: false };
-  }
-
-  const caPath = process.env.DB_CA_PATH
-    ? path.resolve(__dirname, process.env.DB_CA_PATH)
-    : path.join(__dirname, 'ca.pem');
-
-  if (!fs.existsSync(caPath)) {
-    throw new Error('DB_SSL_VERIFY=true, mas o certificado CA não foi encontrado.');
-  }
-
-  return {
-    ca: fs.readFileSync(caPath),
-    rejectUnauthorized: true
-  };
-}
-
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || '127.0.0.1',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'techpecas',
-  port: Number(process.env.DB_PORT || 3306),
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  enableKeepAlive: true,
-  ssl: buildDbSslOptions()
-});
 
 async function ensureColumn(table, column, definition) {
   const [rows] = await pool.execute(
@@ -279,100 +248,15 @@ pool.getConnection()
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(__dirname));
+app.use('/api/auth', authRoutes);
+app.use('/api/veiculos', vehicleRoutes);
+app.use('/api/catalogo', catalogRoutes);
+app.use('/api/historico', historyRoutes);
+app.use('/api', systemRoutes);
 
 function normalizeText(value) {
   return String(value || '').trim();
 }
-
-async function createSessionToken(usuarioId) {
-  const token = crypto.randomBytes(32).toString('hex');
-
-  await pool.execute(
-    'DELETE FROM sessoes WHERE usuario_id = ? AND expira_em IS NOT NULL AND expira_em < NOW()',
-    [usuarioId]
-  );
-
-  await pool.execute(
-    'INSERT INTO sessoes (id, usuario_id, expira_em) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))',
-    [token, usuarioId]
-  );
-
-  return token;
-}
-
-async function requireAdmin(req, res, next) {
-  const authorization = String(req.headers.authorization || '');
-  const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
-
-  if (!token) {
-    return res.status(401).json({ ok: false, msg: 'Faça login para acessar o painel administrativo.' });
-  }
-
-  try {
-    const [rows] = await pool.execute(
-      `SELECT u.id, u.username, u.email, u.papel
-       FROM sessoes s
-       INNER JOIN usuarios u ON u.id = s.usuario_id
-       WHERE s.id = ?
-         AND (s.expira_em IS NULL OR s.expira_em > NOW())
-         AND u.papel = 'admin'
-       LIMIT 1`,
-      [token]
-    );
-
-    if (!rows.length) {
-      return res.status(403).json({ ok: false, msg: 'Acesso permitido somente para administrador.' });
-    }
-
-    req.admin = rows[0];
-    next();
-  } catch (error) {
-    return res.status(500).json({ ok: false, msg: 'Não foi possível validar o acesso administrativo.' });
-  }
-}
-
-async function requireUser(req, res, next) {
-  const authorization = String(req.headers.authorization || '');
-  const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
-
-  if (!token) {
-    return res.status(401).json({ ok: false, msg: 'Faça login para continuar.' });
-  }
-
-  try {
-    const [rows] = await pool.execute(
-      `SELECT u.id, u.username, u.email, u.papel, u.asaas_customer_id
-       FROM sessoes s
-       INNER JOIN usuarios u ON u.id = s.usuario_id
-       WHERE s.id = ?
-         AND (s.expira_em IS NULL OR s.expira_em > NOW())
-       LIMIT 1`,
-      [token]
-    );
-
-    if (!rows.length) {
-      return res.status(401).json({ ok: false, msg: 'Sua sessão expirou. Entre novamente.' });
-    }
-
-    req.user = rows[0];
-    next();
-  } catch (error) {
-    return res.status(500).json({ ok: false, msg: 'Não foi possível validar sua sessão.' });
-  }
-}
-function requireCustomer(req, res, next) {
-  return requireUser(req, res, () => {
-    if (req.user?.papel === 'admin') {
-      return res.status(403).json({
-        ok: false,
-        msg: 'Contas administrativas não podem realizar compras.'
-      });
-    }
-
-    next();
-  });
-}
-
 
 function getAsaasBaseUrl() {
   const configured = normalizeText(process.env.ASAAS_BASE_URL);
@@ -878,226 +762,6 @@ async function saveHistory(usuarioId, termo, tipo = 'busca') {
     console.warn('Não foi possível salvar histórico:', error.message);
   }
 }
-
-// -------------------- AUTENTICAÇÃO --------------------
-
-app.post('/api/auth/register', async (req, res) => {
-  const username = normalizeText(req.body.username);
-  const password = String(req.body.password || '');
-  const email = normalizeText(req.body.email);
-
-  if (username.length < 3) {
-    return res.status(400).json({ ok: false, msg: 'Usuário deve ter no mínimo 3 caracteres' });
-  }
-  if (password.length < 6) {
-    return res.status(400).json({ ok: false, msg: 'Senha deve ter no mínimo 6 caracteres' });
-  }
-
-  try {
-    const [usuarios] = await pool.execute(
-      'SELECT id FROM usuarios WHERE username = ? OR email = ?',
-      [username, email || '']
-    );
-
-    if (usuarios.length > 0) {
-      return res.status(409).json({ ok: false, msg: 'Usuário ou email já existe' });
-    }
-
-    // TODO próximo marco: migrar autenticação para hash de senha e sessão/token.
-    const [result] = await pool.execute(
-      'INSERT INTO usuarios (username, senha, email) VALUES (?, ?, ?)',
-      [username, password, email || null]
-    );
-
-    return res.json({
-      ok: true,
-      msg: 'Usuário registrado com sucesso',
-      usuario: {
-        id: result.insertId,
-        username,
-        email: email || '',
-        papel: 'cliente',
-        token: await createSessionToken(result.insertId)
-      }
-    });
-  } catch (error) {
-    console.error('Erro ao registrar:', error.message);
-    return res.status(500).json({ ok: false, msg: 'Erro ao registrar usuário.' });
-  }
-});
-
-app.post('/api/auth/login', async (req, res) => {
-  const username = normalizeText(req.body.username);
-  const password = String(req.body.password || '');
-
-  if (!username || !password) {
-    return res.status(400).json({ ok: false, msg: 'Usuário e senha são obrigatórios' });
-  }
-
-  try {
-    const configuredAdminUsername = normalizeText(process.env.ADMIN_USERNAME);
-    const configuredAdminPassword = String(process.env.ADMIN_PASSWORD || '');
-
-    if (
-      configuredAdminUsername &&
-      username.toLowerCase() === configuredAdminUsername.toLowerCase()
-    ) {
-      const [adminByName] = await pool.execute(
-        'SELECT id FROM usuarios WHERE LOWER(username) = LOWER(?) LIMIT 1',
-        [configuredAdminUsername]
-      );
-
-      if (!adminByName.length) {
-        const [legacyAdmin] = await pool.execute(
-          "SELECT id FROM usuarios WHERE LOWER(username) = LOWER('Godoy') LIMIT 1"
-        );
-
-        if (legacyAdmin.length) {
-          await pool.execute(
-            "UPDATE usuarios SET username = ?, papel = 'admin' WHERE id = ?",
-            [configuredAdminUsername, legacyAdmin[0].id]
-          );
-        }
-      }
-
-      if (configuredAdminPassword) {
-        await pool.execute(
-          "UPDATE usuarios SET senha = ?, papel = 'admin' WHERE LOWER(username) = LOWER(?)",
-          [configuredAdminPassword, configuredAdminUsername]
-        );
-      }
-    }
-
-    const [usuarios] = await pool.execute(
-      'SELECT id, username, email, papel FROM usuarios WHERE LOWER(username) = LOWER(?) AND senha = ? LIMIT 1',
-      [username, password]
-    );
-
-    if (usuarios.length === 0) {
-      return res.status(401).json({ ok: false, msg: 'Usuário ou senha inválidos' });
-    }
-
-    const usuario = usuarios[0];
-
-    if (
-      configuredAdminUsername &&
-      usuario.username.toLowerCase() === configuredAdminUsername.toLowerCase() &&
-      usuario.papel !== 'admin'
-    ) {
-      await pool.execute(
-        "UPDATE usuarios SET papel = 'admin' WHERE id = ?",
-        [usuario.id]
-      );
-      usuario.papel = 'admin';
-    }
-
-    usuario.token = await createSessionToken(usuario.id);
-
-    return res.json({ ok: true, msg: 'Login realizado com sucesso', usuario });
-  } catch (error) {
-    console.error('Erro ao fazer login:', error.message);
-    return res.status(500).json({ ok: false, msg: 'Erro ao fazer login.' });
-  }
-});
-app.get('/api/auth/me', requireUser, async (req, res) => {
-  try {
-    const adminUsername = normalizeText(process.env.ADMIN_USERNAME);
-    let papel = req.user.papel;
-
-    if (
-      adminUsername &&
-      String(req.user.username || '').toLowerCase() === adminUsername.toLowerCase() &&
-      papel !== 'admin'
-    ) {
-      await pool.execute(
-        "UPDATE usuarios SET papel = 'admin' WHERE id = ?",
-        [req.user.id]
-      );
-      papel = 'admin';
-    }
-
-    return res.json({
-      ok: true,
-      usuario: {
-        id: Number(req.user.id),
-        username: req.user.username,
-        email: req.user.email || '',
-        papel
-      }
-    });
-  } catch (error) {
-    return res.status(500).json({
-      ok: false,
-      msg: 'Não foi possível validar sua sessão.'
-    });
-  }
-});
-
-
-// -------------------- VEICULOS SOLIDOS --------------------
-
-app.get('/api/veiculos', async (req, res) => {
-  const usuarioId = Number(req.query.usuarioId);
-  if (!usuarioId) return res.status(400).json({ ok: false, msg: 'ID do usuário obrigatório.' });
-
-  try {
-    const [rows] = await pool.execute(
-      `SELECT id, marca, modelo, ano, versao, criado_em
-       FROM veiculos WHERE usuario_id = ? ORDER BY criado_em DESC`,
-      [usuarioId]
-    );
-    return res.json({ ok: true, veiculos: rows });
-  } catch (error) {
-    return res.status(500).json({ ok: false, msg: 'Erro ao carregar veículos.' });
-  }
-});
-
-app.post('/api/veiculos', async (req, res) => {
-  const usuarioId = Number(req.body.usuarioId);
-  const marca = normalizeText(req.body.marca);
-  const modelo = normalizeText(req.body.modelo);
-  const ano = Number(req.body.ano);
-  const versao = normalizeText(req.body.versao);
-
-  if (!usuarioId || !marca || !modelo || !ano) {
-    return res.status(400).json({ ok: false, msg: 'Usuário, marca, modelo e ano são obrigatórios.' });
-  }
-
-  try {
-    const [result] = await pool.execute(
-      'INSERT INTO veiculos (usuario_id, marca, modelo, ano, versao) VALUES (?, ?, ?, ?, ?)',
-      [usuarioId, marca, modelo, ano, versao || null]
-    );
-    return res.json({ ok: true, id: result.insertId });
-  } catch (error) {
-    return res.status(500).json({ ok: false, msg: 'Erro ao salvar veículo.' });
-  }
-});
-
-app.delete('/api/veiculos/:id', async (req, res) => {
-  const veiculoId = Number(req.params.id);
-  const usuarioId = Number(req.body.usuarioId);
-
-  if (!veiculoId || !usuarioId) {
-    return res.status(400).json({ ok: false, msg: 'Veículo e usuário são obrigatórios.' });
-  }
-
-  try {
-    const [result] = await pool.execute(
-      'DELETE FROM veiculos WHERE id = ? AND usuario_id = ?',
-      [veiculoId, usuarioId]
-    );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ ok: false, msg: 'Veículo não encontrado.' });
-    }
-
-    return res.json({ ok: true, msg: 'Veículo removido da garagem.' });
-  } catch (error) {
-    console.error('Erro ao remover veículo:', error.message);
-    return res.status(500).json({ ok: false, msg: 'Erro ao remover veículo.' });
-  }
-});
 
 // ------------------- INTELIGÊNCIA ARTIFICIAL/TRIAGEM --------------------
 
@@ -1759,110 +1423,6 @@ app.patch('/api/admin/pedidos/:id/status', requireAdmin, async (req, res) => {
     return res.json({ ok: true, msg: 'Status do pedido atualizado.' });
   } catch (error) {
     return res.status(500).json({ ok: false, msg: 'Não foi possível atualizar o pedido.' });
-  }
-});
-
-// -------------------- CATÁLOGO PRÓPRIO --------------------
-
-app.get('/api/catalogo', async (req, res) => {
-  const termo = normalizeText(req.query.termo);
-  const categoria = normalizeText(req.query.categoria);
-  const marca = normalizeText(req.query.marca);
-  const modelo = normalizeText(req.query.modelo);
-  const ano = Number(req.query.ano) || null;
-
-  try {
-    const where = ['p.ativo = 1'];
-    const params = [];
-
-    if (termo) {
-      const like = '%' + termo + '%';
-      where.push('(p.nome LIKE ? OR p.fabricante LIKE ? OR p.categoria LIKE ? OR p.sku LIKE ?)');
-      params.push(like, like, like, like);
-    }
-
-    if (categoria) {
-      where.push('LOWER(p.categoria) = LOWER(?)');
-      params.push(categoria);
-    }
-
-    if (marca && modelo && ano) {
-      where.push(`EXISTS (
-        SELECT 1 FROM compatibilidades c
-        WHERE c.peca_id = p.id
-          AND LOWER(c.marca) = LOWER(?)
-          AND LOWER(c.modelo) = LOWER(?)
-          AND ? BETWEEN c.ano_inicio AND c.ano_fim
-      )`);
-      params.push(marca, modelo, ano);
-    }
-
-    const [rows] = await pool.execute(
-      `SELECT p.id, p.nome, p.descricao, p.fabricante, p.categoria, p.sku,
-              p.preco_site, p.estoque, p.imagem_url, p.auto_importado
-       FROM pecas p
-       WHERE ${where.join(' AND ')}
-       ORDER BY CASE WHEN p.estoque > 0 THEN 0 ELSE 1 END,
-                p.nome ASC
-       LIMIT 100`,
-      params
-    );
-
-    return res.json({
-      ok: true,
-      produtos: rows.map((p) => ({
-        ...p,
-        preco_site: p.preco_site === null ? null : Number(p.preco_site),
-        estoque: Number(p.estoque || 0),
-        auto_importado: Number(p.auto_importado || 0)
-      }))
-    });
-  } catch (error) {
-    console.error('Erro ao carregar catálogo:', error.message);
-    const precisaMigrar = error.code === 'ER_BAD_FIELD_ERROR';
-    return res.status(500).json({
-      ok: false,
-      msg: precisaMigrar
-        ? 'O banco ainda precisa receber a migração da loja.'
-        : 'Não foi possível carregar o catálogo.'
-    });
-  }
-});
-
-app.get('/api/catalogo/:id', async (req, res) => {
-  const pecaId = Number(req.params.id);
-  if (!pecaId) return res.status(400).json({ ok: false, msg: 'Produto inválido.' });
-
-  try {
-    const [rows] = await pool.execute(
-      `SELECT id, nome, descricao, fabricante, categoria, sku,
-              preco_site, estoque, imagem_url, auto_importado
-       FROM pecas
-       WHERE id = ? AND ativo = 1
-       LIMIT 1`,
-      [pecaId]
-    );
-
-    if (!rows.length) {
-      return res.status(404).json({ ok: false, msg: 'Produto não encontrado.' });
-    }
-
-    const [compatibilidades] = await pool.execute(
-      `SELECT marca, modelo, ano_inicio, ano_fim, observacao
-       FROM compatibilidades
-       WHERE peca_id = ?
-       ORDER BY marca, modelo, ano_inicio`,
-      [pecaId]
-    );
-
-    const produto = rows[0];
-    produto.preco_site = produto.preco_site === null ? null : Number(produto.preco_site);
-    produto.estoque = Number(produto.estoque || 0);
-    produto.auto_importado = Number(produto.auto_importado || 0);
-
-    return res.json({ ok: true, produto, compatibilidades });
-  } catch (error) {
-    return res.status(500).json({ ok: false, msg: 'Não foi possível carregar o produto.' });
   }
 });
 
@@ -3081,57 +2641,6 @@ app.post('/api/pecas/buscar', async (req, res) => {
     ok: false,
     msg: 'Esta busca foi substituída. Use a análise por problema ou a busca direta por peça.'
   });
-});
-
-// -------------------- HISTÓRICO --------------------
-
-app.get('/api/historico', async (req, res) => {
-  const usuarioId = Number(req.query.usuarioId);
-  if (!usuarioId) return res.status(400).json({ ok: false, msg: 'ID do usuário é obrigatório' });
-
-  try {
-    let historico;
-    try {
-      [historico] = await pool.execute(
-        `SELECT id, usuario_id, tipo, termo, data_busca
-         FROM historico_buscas
-         WHERE usuario_id = ?
-         ORDER BY data_busca DESC LIMIT 30`,
-        [usuarioId]
-      );
-    } catch (error) {
-      if (error.code !== 'ER_BAD_FIELD_ERROR') throw error;
-      [historico] = await pool.execute(
-        `SELECT id, usuario_id, 'busca' AS tipo, termo, data_busca
-         FROM historico_buscas
-         WHERE usuario_id = ?
-         ORDER BY data_busca DESC LIMIT 30`,
-        [usuarioId]
-      );
-    }
-    return res.json({ ok: true, historico });
-  } catch (error) {
-    return res.status(500).json({ ok: false, msg: 'Erro ao obter histórico de buscas' });
-  }
-});
-
-app.delete('/api/historico', async (req, res) => {
-  const usuarioId = Number(req.body.usuarioId);
-  if (!usuarioId) return res.status(400).json({ ok: false, msg: 'ID do usuário é obrigatório' });
-
-  try {
-    const [result] = await pool.execute(
-      'DELETE FROM historico_buscas WHERE usuario_id = ?',
-      [usuarioId]
-    );
-    return res.json({ ok: true, deletedRows: result.affectedRows });
-  } catch (error) {
-    return res.status(500).json({ ok: false, msg: 'Erro ao limpar histórico de buscas' });
-  }
-});
-
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true, projeto: 'Tech Peças', msg: 'Servidor rodando' });
 });
 
 app.listen(PORT, () => {
