@@ -647,12 +647,49 @@ function tpLoading(visible, message) {
   box.style.display = visible ? 'flex' : 'none';
 }
 
+function tpSetSearchBusy(form, busy, label) {
+  if (!form) return;
+
+  const button = form.querySelector('button[type="submit"]');
+  if (!button) return;
+
+  if (busy) {
+    if (!button.dataset.originalHtml) {
+      button.dataset.originalHtml = button.innerHTML;
+    }
+
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    button.classList.add('search-submit-loading');
+    button.innerHTML =
+      '<span class="search-button-spinner" aria-hidden="true"></span>' +
+      '<span>' + tpEscape(label || 'Buscando...') + '</span>';
+
+    document.body.classList.add('search-request-active');
+  } else {
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    button.classList.remove('search-submit-loading');
+
+    if (button.dataset.originalHtml) {
+      button.innerHTML = button.dataset.originalHtml;
+    }
+
+    document.body.classList.remove('search-request-active');
+  }
+}
+
 function tpShowResult(html) {
   const area = document.getElementById('resultadoArea');
   if (!area) return;
   area.innerHTML = html;
   area.style.display = 'block';
-  area.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      area.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
 }
 
 function tpRenderDiagnosis(result) {
@@ -955,9 +992,19 @@ document.addEventListener('DOMContentLoaded', function() {
         return showWarning('Informe marca, modelo, ano e descreva o problema com um pouco mais de detalhe.');
       }
 
+      tpSetSearchBusy(diagForm, true, 'Analisando...');
       tpLoading(true, 'Analisando o que pode estar relacionado...');
-      const result = await apiCall('/diagnostico/analisar', { method: 'POST', body: JSON.stringify(payload) });
-      tpLoading(false);
+
+      let result;
+      try {
+        result = await apiCall('/diagnostico/analisar', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+      } finally {
+        tpLoading(false);
+        tpSetSearchBusy(diagForm, false);
+      }
 
       if (!result.ok) return showError(result.msg || 'Não foi possível analisar o problema.');
       tpRenderDiagnosis(result);
@@ -985,12 +1032,21 @@ document.addEventListener('DOMContentLoaded', function() {
         return showWarning('Para filtrar por veículo, informe marca, modelo e ano.');
       }
 
+      tpSetSearchBusy(partForm, true, 'Buscando...');
       tpLoading(true, 'Procurando no Tech Peças e em lojas externas...');
-      const [result, externalResult] = await Promise.all([
-        apiCall('/pecas/pesquisar', { method: 'POST', body: JSON.stringify(payload) }),
-        apiCall('/ofertas-externas/pesquisar', { method: 'POST', body: JSON.stringify(payload) })
-      ]);
-      tpLoading(false);
+
+      let result;
+      let externalResult;
+
+      try {
+        [result, externalResult] = await Promise.all([
+          apiCall('/pecas/pesquisar', { method: 'POST', body: JSON.stringify(payload) }),
+          apiCall('/ofertas-externas/pesquisar', { method: 'POST', body: JSON.stringify(payload) })
+        ]);
+      } finally {
+        tpLoading(false);
+        tpSetSearchBusy(partForm, false);
+      }
 
       if (!result.ok && !externalResult.ok) {
         return showError('Não foi possível concluir a pesquisa agora.');
