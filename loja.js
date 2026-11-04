@@ -1,8 +1,16 @@
-const STORE_CART_KEY = 'techpecas_cart_v1';
+const STORE_CART_KEY_PREFIX = 'techpecas_cart_v2_';
+
+function storeCartKey() {
+  const user = getCurrentUser();
+  return user?.id ? STORE_CART_KEY_PREFIX + String(user.id) : null;
+}
 
 function storeGetCart() {
+  const key = storeCartKey();
+  if (!key) return [];
+
   try {
-    const raw = localStorage.getItem(STORE_CART_KEY);
+    const raw = localStorage.getItem(key);
     const cart = raw ? JSON.parse(raw) : [];
     return Array.isArray(cart) ? cart : [];
   } catch {
@@ -11,7 +19,10 @@ function storeGetCart() {
 }
 
 function storeSaveCart(cart) {
-  localStorage.setItem(STORE_CART_KEY, JSON.stringify(cart));
+  const key = storeCartKey();
+  if (!key) return;
+
+  localStorage.setItem(key, JSON.stringify(cart));
   storeUpdateCartBadges();
 }
 
@@ -20,7 +31,8 @@ function storeCartCount() {
 }
 
 function storeUpdateCartBadges() {
-  const count = storeCartCount();
+  const user = getCurrentUser();
+  const count = user ? storeCartCount() : 0;
   document.querySelectorAll('#cartCount, .cart-count').forEach((el) => {
     el.textContent = String(count);
     el.style.display = count > 0 ? 'inline-grid' : 'none';
@@ -28,6 +40,12 @@ function storeUpdateCartBadges() {
 }
 
 function storeAddToCart(product) {
+  const user = getCurrentUser();
+  if (!user) {
+    showWarning('Faça login para adicionar produtos ao carrinho.', 'Login necessário');
+    return;
+  }
+
   if (!product || !product.id || product.preco_site === null || Number(product.estoque) <= 0) {
     showWarning('Este produto não está disponível para compra agora.');
     return;
