@@ -5084,3 +5084,44 @@ body.search-request-active * {
   padding: .55rem .8rem;
   font-size: .7rem;
 }
+
+
+/* ===== TECH PECAS - IMPORTACAO AUTOMATICA ===== */
+.admin-import-chip {
+  padding: .26rem .45rem;
+  border-radius: 999px;
+  background: #fff2d9;
+  color: #916516;
+  font-size: .58rem;
+  font-weight: 850;
+}
+
+.admin-source-link {
+  display: inline-block;
+  margin-top: .42rem;
+  color: #6d7075;
+  font-size: .64rem;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.admin-product-price-block {
+  min-width: 95px;
+  text-align: right;
+}
+
+.admin-product-price-block small {
+  display: block;
+  margin-bottom: .16rem;
+  color: #2c8b58;
+  font-size: .6rem;
+  font-weight: 850;
+}
+
+@media (max-width: 700px) {
+  .admin-product-price-block {
+    grid-column: 2;
+    text-align: left;
+  }
+}
