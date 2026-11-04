@@ -1,0 +1,28 @@
+name: Export TechPecas IA
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/export-project.yml"
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare project folder
+        run: |
+          mkdir -p dist/techpecas-ia
+          rsync -a             --exclude=".git"             --exclude="node_modules"             --exclude=".github/workflows/export-project.yml"             --exclude="dist"             ./ dist/techpecas-ia/
+
+      - name: Upload project ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: techpecas-ia
+          path: dist/techpecas-ia
+          include-hidden-files: true
+          retention-days: 1
