@@ -209,7 +209,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     } else {
       // Usuário não logado - mostrar link de login
-      navAuth.innerHTML = `<a href="login.html" id="nav-login">Fazer Login</a>`;
+      navAuth.innerHTML = `<a href="login.html" id="nav-login" class="nav-login-link">Fazer Login</a>`;
     }
   }
 
