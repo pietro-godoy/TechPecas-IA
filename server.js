@@ -734,16 +734,18 @@ async function generateJsonWithGemini(prompt) {
     throw new Error('GOOGLE_API_KEY não configurada');
   }
 
-  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.6-flash';
+  // Para a triagem do Tech Peças priorizamos o Flash-Lite, que é mais rápido
+  // para respostas estruturadas simples. O 3.8 Flash fica como reserva.
+  // Não dependemos dos valores antigos do Render (3.8/3.6), pois ambos podem
+  // sofrer indisponibilidade temporária e aumentar muito o tempo de resposta.
+  const primaryModel = process.env.GEMINI_DIAG_MODEL || 'gemini-3.5-flash-lite';
+  const fallbackModel = process.env.GEMINI_DIAG_FALLBACK_MODEL || 'gemini-3.8-flash';
 
-  // O modelo reserva já funciona como segunda tentativa. Evita esperar várias
-  // requisições longas no mesmo modelo antes de retornar ao usuário.
   const maxRetries = 0;
-  const baseDelayMs = Math.max(200, Number(process.env.GEMINI_RETRY_BASE_MS ?? 500));
+  const baseDelayMs = Math.max(200, Number(process.env.GEMINI_RETRY_BASE_MS ?? 400));
   const timeoutMs = Math.min(
-    10000,
-    Math.max(4000, Number(process.env.GEMINI_TIMEOUT_MS ?? 7000))
+    8000,
+    Math.max(3500, Number(process.env.GEMINI_TIMEOUT_MS ?? 6000))
   );
   const models = [...new Set([primaryModel, fallbackModel].filter(Boolean))];
   let lastError;
@@ -772,7 +774,10 @@ async function generateJsonWithGemini(prompt) {
       }
 
       if (modelName !== models[models.length - 1]) {
-        console.warn(`🔁 Mudando do modelo ${modelName} para o modelo reserva ${fallbackModel}...`);
+        console.warn(
+          `🔁 Gemini ${modelName} falhou (${getGeminiStatus(error) || error.code || 'erro'}). ` +
+          `Tentando ${fallbackModel}...`
+        );
       }
     }
   }
@@ -880,7 +885,11 @@ Regras:
 
     return res.json({ ok: true, ...payload, fonte: 'gemini' });
   } catch (error) {
-    console.error('Erro no diagnóstico assistido:', error.message);
+    console.error(
+      'Erro no diagnóstico assistido:',
+      error.code || getGeminiStatus(error) || 'erro',
+      error.message
+    );
     const temporario = isTransientGeminiError(error);
     return res.status(temporario ? 503 : 500).json({
       ok: false,
