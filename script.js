@@ -42,6 +42,12 @@ async function apiCall(endpoint, options = {}) {
     const data = await response.json();
     return data;
   } catch (error) {
+    if (error?.name === 'AbortError') {
+      return {
+        ok: false,
+        msg: 'A análise demorou mais que o esperado. Tente novamente.'
+      };
+    }
     return { ok: false, msg: 'Erro ao conectar com o servidor' };
   }
 }
@@ -1139,12 +1145,17 @@ document.addEventListener('DOMContentLoaded', function() {
       tpLoading(true, 'Analisando o que pode estar relacionado...');
 
       let result;
+      const controller = new AbortController();
+      const requestTimeout = setTimeout(() => controller.abort(), 18000);
+
       try {
         result = await apiCall('/diagnostico/analisar', {
           method: 'POST',
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: controller.signal
         });
       } finally {
+        clearTimeout(requestTimeout);
         tpLoading(false);
         tpSetSearchBusy(diagForm, false);
       }
