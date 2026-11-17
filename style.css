@@ -2805,6 +2805,18 @@ body.auth-page {
   justify-content: flex-start !important;
 }
 
+.login-required-actions .secondary-cta {
+  color: #ffffff;
+  border-color: rgba(255,255,255,.72);
+  background: transparent;
+}
+
+.login-required-actions .secondary-cta:hover {
+  color: #ffffff;
+  border-color: #ffffff;
+  background: rgba(255,255,255,.08);
+}
+
 /* Auth */
 .auth-page {
   min-height: 100vh;
