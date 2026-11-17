@@ -668,13 +668,41 @@ function isTransientGeminiError(error) {
   );
 }
 
-async function generateWithRetry(modelName, prompt, maxRetries, baseDelayMs) {
-  const model = genAI.getGenerativeModel({ model: modelName });
+function withGeminiTimeout(promise, timeoutMs, modelName) {
+  let timeoutId;
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error(`Gemini ${modelName} excedeu o limite de ${timeoutMs}ms`);
+      error.code = 'GEMINI_TIMEOUT';
+      error.status = 408;
+      reject(error);
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise])
+    .finally(() => clearTimeout(timeoutId));
+}
+
+async function generateWithRetry(modelName, prompt, maxRetries, baseDelayMs, timeoutMs) {
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.2,
+      maxOutputTokens: 700
+    }
+  });
   let lastError;
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
-      const result = await model.generateContent(prompt);
+      const result = await withGeminiTimeout(
+        model.generateContent(prompt),
+        timeoutMs,
+        modelName
+      );
+
       return {
         data: parseGeminiJson(result.response.text()),
         model: modelName,
@@ -687,10 +715,7 @@ async function generateWithRetry(modelName, prompt, maxRetries, baseDelayMs) {
         throw error;
       }
 
-      // Backoff exponencial com pequeno jitter para evitar novas tentativas simultâneas.
-      const exponentialDelay = baseDelayMs * (2 ** attempt);
-      const jitter = Math.floor(Math.random() * Math.max(250, baseDelayMs * 0.35));
-      const delay = exponentialDelay + jitter;
+      const delay = Math.min(750, Math.max(200, baseDelayMs));
       const status = getGeminiStatus(error) || 'temporário';
 
       console.warn(
@@ -711,14 +736,27 @@ async function generateJsonWithGemini(prompt) {
 
   const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
   const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.6-flash';
-  const maxRetries = Math.max(0, Number(process.env.GEMINI_RETRIES ?? 2));
-  const baseDelayMs = Math.max(250, Number(process.env.GEMINI_RETRY_BASE_MS ?? 1000));
+
+  // O modelo reserva já funciona como segunda tentativa. Evita esperar várias
+  // requisições longas no mesmo modelo antes de retornar ao usuário.
+  const maxRetries = 0;
+  const baseDelayMs = Math.max(200, Number(process.env.GEMINI_RETRY_BASE_MS ?? 500));
+  const timeoutMs = Math.min(
+    10000,
+    Math.max(4000, Number(process.env.GEMINI_TIMEOUT_MS ?? 7000))
+  );
   const models = [...new Set([primaryModel, fallbackModel].filter(Boolean))];
   let lastError;
 
   for (const modelName of models) {
     try {
-      const response = await generateWithRetry(modelName, prompt, maxRetries, baseDelayMs);
+      const response = await generateWithRetry(
+        modelName,
+        prompt,
+        maxRetries,
+        baseDelayMs,
+        timeoutMs
+      );
 
       if (modelName !== primaryModel) {
         console.log(`✅ Gemini respondeu usando o modelo reserva: ${modelName}`);
@@ -785,7 +823,7 @@ app.post('/api/diagnostico/analisar', async (req, res) => {
   const cached = cacheGet(cacheKey);
 
   if (cached) {
-    if (usuarioId) await saveHistory(usuarioId, `${veiculoTexto} — {{problema}}`, 'problema');
+    if (usuarioId) await saveHistory(usuarioId, `${veiculoTexto} — ${problema}`, 'problema');
     return res.json({ ok: true, ...cached, fonte: 'cache' });
   }
 
@@ -812,7 +850,7 @@ Retorne APENAS JSON válido nesta estrutura:
 }
 
 Regras:
-- Liste no máximo 6 componentes.
+- Liste no máximo 4 componentes.
 - Não invente códigos OEM.
 - Não afirme que uma peça está defeituosa sem inspeção.
 - Use linguagem simples em português do Brasil.
