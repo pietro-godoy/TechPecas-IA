@@ -9,6 +9,19 @@
   <meta name="theme-color" content="#0a0b0d">
   <link rel="stylesheet" href="style.css">
   <script src="modal.js"></script>
+<style>
+.tp-inline-loading{min-height:340px;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px 20px;gap:12px}
+.tp-inline-loading h2{margin:0;font-size:clamp(24px,4vw,34px);color:#171717}
+.tp-inline-loading p{margin:0;color:#555;max-width:480px;font-size:16px}
+.tp-robot{width:116px;height:130px;animation:tpDance .65s ease-in-out infinite alternate;transform-origin:bottom center}
+.tp-arm{transform-box:fill-box;transform-origin:right bottom;animation:tpArm .45s ease-in-out infinite alternate}.tp-arm-right{transform-origin:left bottom;animation-direction:alternate-reverse}
+.tp-dots{display:flex;gap:7px;padding:8px}.tp-dots i{width:8px;height:8px;background:#e62435;border-radius:50%;animation:tpPulse .8s infinite alternate}.tp-dots i:nth-child(2){animation-delay:.2s}.tp-dots i:nth-child(3){animation-delay:.4s}
+@keyframes tpDance{from{transform:translateX(-12px) rotate(-10deg)}to{transform:translateX(12px) translateY(-8px) rotate(10deg)}}@keyframes tpArm{from{transform:rotate(-15deg)}to{transform:rotate(30deg)}}@keyframes tpPulse{from{opacity:.25}to{opacity:1}}
+.search-workspace.tp-busy .mode-panel,.search-workspace.tp-busy .search-mode-tabs{display:none!important}
+.search-workspace.tp-busy{cursor:default!important}
+#resultadoArea{scroll-margin-top:100px}
+@media(prefers-reduced-motion:reduce){.tp-robot,.tp-arm,.tp-dots i{animation:none}}
+</style>
 </head>
 <body class="app-body">
   <header class="site-header app-header">
@@ -94,7 +107,7 @@
           </label>
 
           <div class="form-actions">
-            <button type="submit" class="primary-cta button-reset">Ver peças relacionadas <span>→</span></button>
+            <button type="submit" class="primary-cta button-reset">Analisar</button>
             <span class="form-note">Use as sugestões como ponto de partida. A avaliação de um mecânico continua sendo a confirmação mais segura.</span>
           </div>
         </form>
@@ -134,11 +147,22 @@
           </div>
 
           <div class="form-actions">
-            <button type="submit" class="primary-cta button-reset">Buscar peças <span>→</span></button>
+            <button type="submit" class="primary-cta button-reset">Buscar</button>
             <span class="form-note">Preços e disponibilidade dependem das ofertas cadastradas no catálogo.</span>
           </div>
         </form>
       </div>
+      <section id="loadingSpinner" class="tp-inline-loading" role="status" aria-live="polite" style="display:none;">
+        <svg class="tp-robot" viewBox="0 0 120 130" aria-hidden="true">
+          <path d="M60 24V10" stroke="#171717" stroke-width="5"/><circle cx="60" cy="8" r="6" fill="#e62435"/>
+          <rect x="24" y="24" width="72" height="46" rx="15" fill="#171717"/><rect x="31" y="31" width="58" height="31" rx="10" fill="#eee"/>
+          <circle cx="45" cy="44" r="5" fill="#e62435"/><circle cx="75" cy="44" r="5" fill="#e62435"/><path d="M52 51 Q60 59 68 51" stroke="#171717" stroke-width="2" fill="none"/>
+          <rect x="36" y="74" width="48" height="33" rx="10" fill="#171717"/><path class="tp-arm" d="M28 80 L12 62" stroke="#e62435" stroke-width="12" stroke-linecap="round"/><path class="tp-arm tp-arm-right" d="M92 80 L108 62" stroke="#e62435" stroke-width="12" stroke-linecap="round"/>
+          <rect x="39" y="105" width="16" height="20" rx="5" fill="#333"/><rect x="65" y="105" width="16" height="20" rx="5" fill="#333"/><rect x="46" y="80" width="28" height="19" rx="5" fill="#e62435"/><text x="60" y="94" font-size="12" font-weight="bold" text-anchor="middle" fill="white">TP</text>
+        </svg>
+        <h2>Só um instante!</h2><p>Estamos buscando as melhores ofertas para o seu veículo.</p>
+        <div class="tp-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+      </section>
       </div>
 
       <aside class="history-section tech-history search-history-sidebar">
@@ -153,10 +177,6 @@
       </aside>
     </section>
 
-    <section id="loadingSpinner" class="loading-spinner tech-loading" style="display:none;">
-      <div class="spinner"></div>
-      <p>Buscando as melhores correspondências...</p>
-    </section>
 
     <section id="resultadoArea" class="result-area" style="display:none;"></section>
 
