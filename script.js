@@ -677,44 +677,31 @@ function tpMoney(value) {
   return number.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function tpLoading(visible, message) {
+function tpLoading(visible) {
   const box = document.getElementById('loadingSpinner');
   if (!box) return;
+  const workspace = box.closest('.search-workspace');
   const p = box.querySelector('p');
-  if (p && message) p.textContent = message;
+  if (visible && p) {
+    p.textContent = document.getElementById('modeProblema')?.classList.contains('active')
+      ? 'Estamos analisando o problema do seu veículo.'
+      : 'Estamos buscando as melhores ofertas para o seu veículo.';
+  }
+  workspace?.classList.toggle('tp-busy', visible);
   box.style.display = visible ? 'flex' : 'none';
+  if (visible) {
+    const area = document.getElementById('resultadoArea');
+    if (area) { area.style.display = 'none'; area.innerHTML = ''; }
+  }
 }
 
-function tpSetSearchBusy(form, busy, label) {
-  if (!form) return;
-
-  const button = form.querySelector('button[type="submit"]');
+function tpSetSearchBusy(form, busy) {
+  const button = form?.querySelector('button[type="submit"]');
   if (!button) return;
-
-  if (busy) {
-    if (!button.dataset.originalHtml) {
-      button.dataset.originalHtml = button.innerHTML;
-    }
-
-    button.disabled = true;
-    button.setAttribute('aria-busy', 'true');
-    button.classList.add('search-submit-loading');
-    button.innerHTML =
-      '<span class="search-button-spinner" aria-hidden="true"></span>' +
-      '<span>' + tpEscape(label || 'Buscando...') + '</span>';
-
-    document.body.classList.add('search-request-active');
-  } else {
-    button.disabled = false;
-    button.removeAttribute('aria-busy');
-    button.classList.remove('search-submit-loading');
-
-    if (button.dataset.originalHtml) {
-      button.innerHTML = button.dataset.originalHtml;
-    }
-
-    document.body.classList.remove('search-request-active');
-  }
+  button.disabled = busy;
+  if (busy) button.setAttribute('aria-busy', 'true');
+  else button.removeAttribute('aria-busy');
+  document.querySelectorAll('.search-mode').forEach(tab => { tab.disabled = busy; });
 }
 
 function tpShowResult(html) {
@@ -1125,6 +1112,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (diagForm) {
     diagForm.addEventListener('submit', async function(event) {
       event.preventDefault();
+      if (document.querySelector('.search-workspace.tp-busy')) return;
       const user = getCurrentUser();
       if (!user) return showWarning('Faça login para analisar o problema do seu veículo.');
 
@@ -1169,6 +1157,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (partForm) {
     partForm.addEventListener('submit', async function(event) {
       event.preventDefault();
+      if (document.querySelector('.search-workspace.tp-busy')) return;
       const user = getCurrentUser();
       if (!user) return showWarning('Faça login para pesquisar peças.');
 
