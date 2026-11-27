@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const image = storeSafeImage(p.imagem_url) || fallback;
   const available = p.preco_site !== null && Number(p.estoque) > 0;
   const rows = [['Nome',p.nome],['Fabricante',p.fabricante],['Categoria',p.categoria],['Código SKU',p.sku]];
-  const compat = Array.isArray(data.compatibilidades) ? data.compatibilidades : [];
+  const compat = Array.isArray(data.compatibilidades) ? data.compatibilidades.filter(c=>!String(c.observacao||'').includes('automaticamente a partir da busca')) : [];
   document.title = (p.nome || 'Produto') + ' | Tech Peças';
   root.innerHTML = '<article class="pd-card pd-grid"><div class="pd-media" id="pdMedia"></div><div><small>'+e(p.categoria || 'Autopeça')+'</small><h1>'+e(p.nome)+'</h1><p>'+e(p.fabricante || 'Fabricante não informado')+'</p><a href="#pdReviews">Avaliações do produto</a> · <a href="#pdCompatibility">Conferir meu veículo</a><div class="pd-price">'+(p.preco_site === null ? 'Consultar' : storeMoney(p.preco_site))+'</div><p>'+ (available ? Number(p.estoque)+' unidades em estoque' : 'Indisponível para compra')+'</p><div class="pd-actions"><button id="pdAdd" class="primary-cta button-reset" '+(available?'':'disabled')+'>Adicionar ao carrinho</button><a class="secondary-cta" href="carrinho.html">Ver carrinho</a></div><p class="pd-note">Frete e condições de pagamento na finalização da compra.</p></div></article>'+
   '<section class="pd-card"><h2>Ficha técnica</h2><table class="pd-spec">'+rows.map(([k,v])=>'<tr><th>'+e(k)+'</th><td>'+e(v || 'Não informado')+'</td></tr>').join('')+'</table><div id="pdTechnical">Carregando especificações...</div></section>'+
