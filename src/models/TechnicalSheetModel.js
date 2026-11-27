@@ -1,6 +1,6 @@
 const { pool } = require('../config/database');
 const fields = {
-  common: ['Código OEM','Referência do fabricante','Material','Dimensões','Posição de instalação','Garantia'],
+  common: ['Fabricante identificado','Aplicações informadas na fonte','Motorização e versão','Conteúdo da embalagem','Código OEM','Referência do fabricante','Material','Dimensões','Posição de instalação','Garantia'],
   filtro: ['Altura','Diâmetro externo','Rosca','Válvula antirretorno'],
   vela: ['Rosca','Comprimento da rosca','Grau térmico','Material do eletrodo','Folga do eletrodo'],
   pastilha: ['Comprimento','Altura','Espessura','Sensor de desgaste','Quantidade por embalagem'],
@@ -32,4 +32,16 @@ async function save(id,name,entries){
   try{await conn.beginTransaction();for(const r of clean){if(!r.valor)await conn.execute('DELETE FROM produto_ficha_tecnica WHERE peca_id=? AND campo=?',[id,r.campo]);else await conn.execute('INSERT INTO produto_ficha_tecnica (peca_id,campo,valor,fonte) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE valor=VALUES(valor),fonte=VALUES(fonte)',[id,r.campo,r.valor,r.fonte]);}await conn.commit();}catch(e){await conn.rollback();throw e;}finally{conn.release();}
   return read(id,name);
 }
-module.exports={read,save,ensure};
+async function readPublic(p){
+  const ficha=await read(p.id,p.nome);
+  try{
+    const ref=ficha.find(x=>x.campo==='Referência do fabricante')?.valor;
+    const identity=ref?p.fabricante+'|'+ref:'texto|'+require('crypto').createHash('sha256').update((p.nome||'')+'|'+(p.descricao||'')).digest('hex');
+    const [rows]=await pool.execute("SELECT sugestoes FROM produto_ficha_pesquisa WHERE peca_id=? AND identidade=? AND status='publicado'",[p.id,identity]);
+    const raw=rows[0]?.sugestoes;
+    const published=typeof raw==='string'?JSON.parse(raw):raw;
+    if(!Array.isArray(published))return ficha;
+    return ficha.map(item=>item.valor?item:published.find(x=>x.campo===item.campo)||item);
+  }catch(e){if(e.code!=='ER_NO_SUCH_TABLE')console.warn('Ficha automática indisponível:',e.code||'erro');return ficha;}
+}
+module.exports={read,readPublic,save,ensure};
