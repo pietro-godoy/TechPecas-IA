@@ -47,4 +47,12 @@ async function readPublic(p){
     return ficha.map(item=>item.valor?item:published.find(x=>x.campo===item.campo)||item);
   }catch(e){if(e.code!=='ER_NO_SUCH_TABLE')console.warn('Ficha automática indisponível:',e.code||'erro');return ficha;}
 }
-module.exports={read,readPublic,save,ensure};
+async function saveImported(id,name,entries){
+  await ensure();
+  const allowed=new Set(schema(name));
+  for(const item of entries){
+    if(!allowed.has(item.campo)||typeof item.valor!=='string'||!item.valor.trim()||item.valor.length>500||typeof item.fonte!=='string'||item.fonte.length>700||!/^https?:\/\//i.test(item.fonte))continue;
+    await pool.execute('INSERT IGNORE INTO produto_ficha_tecnica (peca_id,campo,valor,fonte) VALUES (?,?,?,?)',[id,item.campo,item.valor,item.fonte]);
+  }
+}
+module.exports={read,readPublic,save,ensure,schema,saveImported};
