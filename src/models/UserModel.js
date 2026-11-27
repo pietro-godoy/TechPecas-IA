@@ -12,7 +12,7 @@ async function findDuplicate(username, email) {
 
 async function create({ username, password, email }) {
   const [result] = await pool.execute(
-    'INSERT INTO usuarios (username, senha, email) VALUES (?, ?, ?)',
+    "INSERT INTO usuarios (username, senha, email, papel) VALUES (?, ?, ?, 'cliente')",
     [username, await hashPassword(password), email || null]
   );
   return result.insertId;
@@ -24,7 +24,9 @@ async function findByCredentials(username, password) {
     [username]
   );
   const row=rows[0];
-  if(!row||!await verifyPassword(password,row.senha))return null;
+  const dummy=['scrypt','0'.repeat(32),'0'.repeat(128)].join('$');
+  const valid=await verifyPassword(password,row?.senha||dummy);
+  if(!row||!valid)return null;
   const {senha,...user}=row;return user;
 }
 
@@ -34,31 +36,6 @@ async function findByUsername(username) {
     [username]
   );
   return rows[0] || null;
-}
-
-async function findLegacyAdmin() {
-  const [rows] = await pool.execute(
-    "SELECT id, username, email, papel FROM usuarios WHERE LOWER(username) = LOWER('Godoy') LIMIT 1"
-  );
-  return rows[0] || null;
-}
-
-async function renameAsAdmin(id, username) {
-  await pool.execute(
-    "UPDATE usuarios SET username = ?, papel = 'admin' WHERE id = ?",
-    [username, id]
-  );
-}
-
-async function updatePasswordAndRoleByUsername(username, password) {
-  await pool.execute(
-    "UPDATE usuarios SET senha = ?, papel = 'admin' WHERE LOWER(username) = LOWER(?)",
-    [await hashPassword(password), username]
-  );
-}
-
-async function updateRole(id, role) {
-  await pool.execute('UPDATE usuarios SET papel = ? WHERE id = ?', [role, id]);
 }
 
 async function createSession(usuarioId) {
@@ -115,10 +92,6 @@ module.exports = {
   create,
   findByCredentials,
   findByUsername,
-  findLegacyAdmin,
-  renameAsAdmin,
-  updatePasswordAndRoleByUsername,
-  updateRole,
   createSession,
   findBySessionToken,
   findAdminBySessionToken
