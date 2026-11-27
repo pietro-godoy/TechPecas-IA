@@ -596,6 +596,16 @@ async function adminBoot() {
 document.addEventListener('DOMContentLoaded', () => {
   adminInitSidebarNavigation();
   adminBoot();
+  document.getElementById('adminTestIntegrations')?.addEventListener('click',async()=>{
+    const btn=document.getElementById('adminTestIntegrations'),out=document.getElementById('adminIntegrationResults');
+    btn.disabled=true;out.textContent='Executando consultas reais...';
+    try{
+      const r=await apiCall('/admin/integracoes/testar',{method:'POST',body:'{}'});
+      if(!r.ok){out.textContent=r.msg||'Não foi possível testar as integrações.';return;}
+      const labels={ok:'Respondendo',erro:'Falha',nao_configurado:'Não configurado',desativado:'Desativado'};
+      out.innerHTML=(r.testes||[]).map(v=>'<article style="border:1px solid #ddd;border-radius:12px;padding:14px;margin:8px 0"><strong>'+tpEscape(v.nome)+'</strong> — '+tpEscape(labels[v.status]||v.status)+' · '+Number(v.ms)+' ms<p>'+tpEscape(v.detalhe||'')+(v.codigo?' · Código: '+tpEscape(v.codigo):'')+(v.resultados!=null?' · '+Number(v.resultados)+' resultados':'')+'</p>'+(v.catalogo!=null?'<p>Produtos ativos: '+Number(v.catalogo)+'</p>':'')+(v.fila?'<ul>'+v.fila.map(f=>'<li>'+tpEscape(f.status)+': '+Number(f.total)+' · '+tpEscape(f.ultima?new Date(f.ultima).toLocaleString('pt-BR'):'')+'</li>').join('')+'</ul>':'')+'</article>').join('')+'<small>Último teste: '+tpEscape(new Date(r.executado_em).toLocaleString('pt-BR'))+'</small>';
+    }catch(e){out.textContent='Falha ao executar o teste.';}finally{btn.disabled=false;}
+  });
 
   document.getElementById('adminProductForm')?.addEventListener('submit', adminSaveProduct);
   document.getElementById('adminNewProduct')?.addEventListener('click', () => {
