@@ -2,7 +2,7 @@ const VehicleModel = require('../models/VehicleModel');
 const { normalizeText } = require('../utils/text');
 
 async function list(req, res) {
-  const usuarioId = Number(req.query.usuarioId);
+  const usuarioId = Number(req.user.id);
   if (!usuarioId) return res.status(400).json({ ok: false, msg: 'ID do usuário obrigatório.' });
 
   try {
@@ -13,7 +13,7 @@ async function list(req, res) {
 }
 
 async function create(req, res) {
-  const usuarioId = Number(req.body.usuarioId);
+  const usuarioId = Number(req.user.id);
   const marca = normalizeText(req.body.marca);
   const modelo = normalizeText(req.body.modelo);
   const ano = Number(req.body.ano);
@@ -33,7 +33,7 @@ async function create(req, res) {
 
 async function remove(req, res) {
   const veiculoId = Number(req.params.id);
-  const usuarioId = Number(req.body.usuarioId);
+  const usuarioId = Number(req.user.id);
 
   if (!veiculoId || !usuarioId) {
     return res.status(400).json({ ok: false, msg: 'Veículo e usuário são obrigatórios.' });
