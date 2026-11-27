@@ -30,6 +30,16 @@ router.post('/:id/avaliacoes', requireCustomer, async (req,res) => {
   } catch(e){res.status(500).json({ok:false,msg:'Não foi possível salvar a avaliação.'});}
 });
 
+const TechnicalSheet = require('../models/TechnicalSheetModel');
+const { requireAdmin } = require('../middleware/authMiddleware');
+router.get('/:id/ficha-tecnica', async (req,res)=>{
+  try{const p=await CatalogModel.findById(Number(req.params.id));if(!p)return res.status(404).json({ok:false,msg:'Produto não encontrado.'});res.json({ok:true,ficha:await TechnicalSheet.read(p.id,p.nome)});}
+  catch(e){res.status(500).json({ok:false,msg:'Ficha técnica indisponível.'});}
+});
+router.put('/:id/ficha-tecnica',requireAdmin,async(req,res)=>{
+  try{const p=await CatalogModel.findById(Number(req.params.id));if(!p)return res.status(404).json({ok:false,msg:'Produto não encontrado.'});res.json({ok:true,ficha:await TechnicalSheet.save(p.id,p.nome,req.body.ficha)});}
+  catch(e){res.status(400).json({ok:false,msg:'Não foi possível salvar. Confira os campos e as fontes.'});}
+});
 router.get('/', controller.list);
 router.get('/:id', controller.detail);
 
