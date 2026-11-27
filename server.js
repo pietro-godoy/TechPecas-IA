@@ -208,6 +208,7 @@ app.use('/assets',(req,res,next)=>{
 },express.static(require('path').join(__dirname,'assets'),{dotfiles:'deny',index:false}));
 const searchLimit=rateLimit({limit:60,windowMs:15*60*1000,key:req=>req.user?.id||req.ip});
 const externalLimit=rateLimit({limit:20,windowMs:15*60*1000,key:req=>req.user?.id||req.ip});
+const externalIpLimit=rateLimit({limit:60,windowMs:15*60*1000});
 app.use('/api/auth', authRoutes);
 app.use('/api/veiculos', vehicleRoutes);
 app.use('/api/catalogo', catalogRoutes);
@@ -766,13 +767,13 @@ async function saveHistory(usuarioId, termo, tipo = 'busca') {
       );
       return;
     }
-    console.warn('Não foi possível salvar histórico:', error.message);
+    console.warn('Não foi possível salvar histórico:', error.code||'erro');
   }
 }
 
 // ------------------- INTELIGÊNCIA ARTIFICIAL/TRIAGEM --------------------
 
-app.post('/api/diagnostico/analisar', requireUser, externalLimit, async (req, res) => {
+app.post('/api/diagnostico/analisar', externalIpLimit, requireUser, externalLimit, async (req, res) => {
   const usuarioId = Number(req.user.id);
   const marca = normalizeText(req.body.marca);
   const modelo = normalizeText(req.body.modelo);
@@ -843,7 +844,7 @@ Regras:
           [usuarioId, veiculoTexto, problema, JSON.stringify(analise)]
         );
       } catch (error) {
-        console.warn('Consulta de IA não foi persistida:', error.message);
+        console.warn('Consulta de IA não foi persistida:', error.code||'erro');
       }
     }
 
@@ -988,7 +989,8 @@ app.post('/api/admin/integracoes/testar',requireAdmin,async(req,res)=>{
 });
 
 app.get('/api/admin/me', requireAdmin, async (req, res) => {
-  return res.json({ ok: true, admin: req.admin });
+  const {id,username,papel}=req.admin;
+  return res.json({ok:true,admin:{id,username,papel}});
 });
 
 app.get('/api/admin/resumo', requireAdmin, async (req, res) => {
@@ -1167,7 +1169,7 @@ app.post('/api/admin/produtos', requireAdmin, async (req, res) => {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ ok: false, msg: 'Já existe um produto com esse SKU.' });
     }
-    return res.status(400).json({ ok: false, msg: error.message || 'Não foi possível cadastrar o produto.' });
+    return res.status(400).json({ ok: false, msg: 'Não foi possível cadastrar o produto.' });
   } finally {
     conn.release();
   }
@@ -1220,7 +1222,7 @@ app.put('/api/admin/produtos/:id', requireAdmin, async (req, res) => {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ ok: false, msg: 'Já existe outro produto com esse SKU.' });
     }
-    return res.status(400).json({ ok: false, msg: error.message || 'Não foi possível atualizar o produto.' });
+    return res.status(400).json({ ok: false, msg: 'Não foi possível atualizar o produto.' });
   } finally {
     conn.release();
   }
@@ -1405,7 +1407,7 @@ app.post('/api/admin/pedidos/:id/confirmar-pagamento', requireAdmin, async (req,
   } catch (error) {
     return res.status(error.status && error.status < 500 ? error.status : 502).json({
       ok: false,
-      msg: error.message || 'Não foi possível confirmar o pagamento.'
+      msg: 'Não foi possível confirmar o pagamento.'
     });
   }
 });
@@ -1471,7 +1473,7 @@ app.post('/api/admin/pedidos/:id/estornar', requireAdmin, async (req, res) => {
   } catch (error) {
     return res.status(error.status && error.status < 500 ? error.status : 502).json({
       ok: false,
-      msg: error.message || 'Não foi possível solicitar o estorno.'
+      msg: 'Não foi possível solicitar o estorno.'
     });
   }
 });
@@ -1534,7 +1536,7 @@ app.post('/api/admin/pedidos/:id/cancelar', requireAdmin, async (req, res) => {
   } catch (error) {
     return res.status(error.status && error.status < 500 ? error.status : 502).json({
       ok: false,
-      msg: error.message || 'Não foi possível cancelar o pedido.'
+      msg: 'Não foi possível cancelar o pedido.'
     });
   }
 });
@@ -1618,7 +1620,7 @@ app.post('/api/pagamentos/asaas/criar', requireCustomer, async (req, res) => {
             expirationDate: qr.expirationDate || null
           };
         } catch (error) {
-          console.warn('Não foi possível recuperar QR Pix existente:', error.message);
+          console.warn('Não foi possível recuperar QR Pix existente:', error.code||'erro');
         }
       }
 
@@ -1719,10 +1721,10 @@ app.post('/api/pagamentos/asaas/criar', requireCustomer, async (req, res) => {
 
     return res.json(response);
   } catch (error) {
-    console.error('Erro Asaas ao criar cobrança:', error.message);
+    console.error('Erro Asaas ao criar cobrança:', error.code||'erro');
     return res.status(error.status && error.status < 500 ? error.status : 502).json({
       ok: false,
-      msg: error.message || 'Não foi possível gerar o pagamento no Asaas.'
+      msg: 'Não foi possível gerar o pagamento no Asaas.'
     });
   }
 });
@@ -1827,7 +1829,7 @@ app.post('/api/webhooks/asaas', async (req, res) => {
     return res.json({ ok: true });
   } catch (error) {
     await conn.rollback();
-    console.error('Erro ao processar Webhook Asaas:', error.message);
+    console.error('Erro ao processar Webhook Asaas:', error.code||'erro');
     return res.status(500).json({ ok: false, msg: 'Erro ao processar Webhook.' });
   } finally {
     conn.release();
@@ -1895,7 +1897,7 @@ app.post('/api/admin/asaas/webhook', requireAdmin, async (req, res) => {
         body: payload
       });
 
-      return res.json({ ok: true, created: false, updated: true, webhook });
+      return res.json({ ok: true, created: false, updated: true, webhook: {id:webhook?.id} });
     }
 
     const webhook = await asaasRequest('/webhooks', {
@@ -1906,12 +1908,12 @@ app.post('/api/admin/asaas/webhook', requireAdmin, async (req, res) => {
       }
     });
 
-    return res.json({ ok: true, created: true, updated: false, webhook });
+    return res.json({ ok: true, created: true, updated: false, webhook: {id:webhook?.id} });
   } catch (error) {
-    console.error('Erro ao configurar Webhook Asaas:', error.message);
+    console.error('Erro ao configurar Webhook Asaas:', error.code||'erro');
     return res.status(error.status && error.status < 500 ? error.status : 502).json({
       ok: false,
-      msg: error.message || 'Não foi possível configurar o Webhook no Asaas.'
+      msg: 'Não foi possível configurar o Webhook no Asaas.'
     });
   }
 });
@@ -1971,7 +1973,7 @@ app.post('/api/pedidos', requireCustomer, async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Erro ao verificar checkout existente:', error.message);
+    console.error('Erro ao verificar checkout existente:', error.code||'erro');
   }
 
   const conn = await pool.getConnection();
@@ -2090,11 +2092,11 @@ app.post('/api/pedidos', requireCustomer, async (req, res) => {
           });
         }
       } catch (lookupError) {
-        console.error('Erro ao recuperar pedido duplicado:', lookupError.message);
+        console.error('Erro ao recuperar pedido duplicado:', lookupError.code||'erro');
       }
     }
 
-    console.error('Erro ao criar pedido:', error.message);
+    console.error('Erro ao criar pedido:', error.code||'erro');
     return res.status(400).json({
       ok: false,
       msg: error.message.startsWith('Estoque insuficiente') || error.message.startsWith('Produto indisponível')
@@ -2212,7 +2214,7 @@ app.post('/api/pedidos/:id/cancelar', requireCustomer, async (req, res) => {
       conn.release();
     }
   } catch (error) {
-    console.error('Erro ao cancelar pedido:', error.message);
+    console.error('Erro ao cancelar pedido:', error.code||'erro');
     return res.status(500).json({
       ok: false,
       msg: 'Não foi possível cancelar o pedido agora.'
@@ -2591,7 +2593,7 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
 
 // -------------------- OFERTAS EXTERNAS --------------------
 
-app.post('/api/ofertas-externas/pesquisar', requireUser, externalLimit, async (req, res) => {
+app.post('/api/ofertas-externas/pesquisar', externalIpLimit, requireUser, externalLimit, async (req, res) => {
   const termo = normalizeText(req.body.termo).slice(0,200);
   const marca = normalizeText(req.body.marca);
   const modelo = normalizeText(req.body.modelo);
@@ -2640,7 +2642,7 @@ app.post('/api/ofertas-externas/pesquisar', requireUser, externalLimit, async (r
   }
 });
 
-app.post('/api/ofertas-externas/lojas', requireUser, externalLimit, async (req, res) => {
+app.post('/api/ofertas-externas/lojas', externalIpLimit, requireUser, externalLimit, async (req, res) => {
   const productId = normalizeText(req.body.productId);
   const pageToken = normalizeText(req.body.pageToken);
 
@@ -2693,7 +2695,7 @@ app.post('/api/pecas/pesquisar', requireUser, searchLimit, async (req, res) => {
       }))
     });
   } catch (error) {
-    console.error('Erro ao pesquisar peças:', error.message);
+    console.error('Erro ao pesquisar peças:', error.code||'erro');
     return res.status(500).json({
       ok: false,
       msg: 'Erro ao pesquisar o catálogo. Verifique se o banco atualizado foi importado.'
@@ -2732,6 +2734,7 @@ app.post('/api/pecas/buscar', async (req, res) => {
   });
 });
 
+app.use((err,req,res,next)=>{if(res.headersSent)return next(err);return res.status(err.status===400?400:500).json({ok:false,msg:'Não foi possível processar a solicitação.'});});
 async function start(){
   await pool.query('SELECT 1');
   await ensureStoreSchema();
