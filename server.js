@@ -932,12 +932,22 @@ async function atualizarFichasAutomaticamente(){
     await pool.query("CREATE TABLE IF NOT EXISTS produto_ficha_pesquisa (peca_id INT PRIMARY KEY, identidade VARCHAR(300) NOT NULL, sugestoes JSON NULL, status VARCHAR(30) NOT NULL, pesquisado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
     const Technical=require('./src/models/TechnicalSheetModel');
     // Referência explícita cadastrada; SKU interno não é prova de identidade.
-    const [rows]=await pool.query(`SELECT p.id,p.nome,p.fabricante,t.valor AS referencia FROM pecas p JOIN produto_ficha_tecnica t ON t.peca_id=p.id AND t.campo='Referência do fabricante' LEFT JOIN produto_ficha_pesquisa q ON q.peca_id=p.id WHERE p.ativo=1 AND p.fabricante IS NOT NULL AND p.fabricante<>'' AND (q.peca_id IS NULL OR q.identidade<>CONCAT(p.fabricante,'|',t.valor) OR q.pesquisado_em < NOW()-INTERVAL 7 DAY) ORDER BY COALESCE(q.pesquisado_em,'2000-01-01') LIMIT 2`);
+    await Technical.ensure();
+    const [rows]=await pool.query(`SELECT p.id,p.nome,p.fabricante,p.descricao,t.valor AS referencia FROM pecas p LEFT JOIN produto_ficha_tecnica t ON t.peca_id=p.id AND t.campo='Referência do fabricante' LEFT JOIN produto_ficha_pesquisa q ON q.peca_id=p.id WHERE p.ativo=1 AND (t.valor IS NOT NULL OR (p.auto_importado=1 AND p.descricao LIKE '%Referência externa:%')) AND (q.peca_id IS NULL OR q.identidade<>COALESCE(CONCAT(p.fabricante,'|',t.valor),CONCAT('externo|',SHA2(p.descricao,256))) OR q.pesquisado_em < NOW()-INTERVAL 7 DAY) ORDER BY COALESCE(q.pesquisado_em,'2000-01-01') LIMIT 2`);
     for(const p of rows){
-      const identidade=p.fabricante+'|'+p.referencia;
-      if(identidade.length>300||/^(linha tech peças|demoparts)$/i.test(p.fabricante))continue;
+      const identidade=p.referencia?p.fabricante+'|'+p.referencia:'externo|'+crypto.createHash('sha256').update(p.descricao).digest('hex');
+      if(identidade.length>300)continue;
       try{
-        const result=await pesquisarFicha(p,p.fabricante,p.referencia);
+        let fabricante=p.fabricante, referencia=p.referencia;
+        if(!referencia){
+          const titulo=p.descricao.split('Referência externa: ')[1]?.split('. Consulte as especificações')[0]||'';
+          const identity=await generateJsonWithGemini('Extraia fabricante e código de peça explicitamente escritos neste título de anúncio. Não deduza, não use modelo de carro, ano ou SKU interno como código. Retorne JSON {fabricante,referencia}, ambos null se incerto. Título: '+JSON.stringify(titulo));
+          fabricante=String(identity?.fabricante||'').trim();referencia=String(identity?.referencia||'').trim();
+          if(!fabricante||!referencia||!titulo.toLowerCase().includes(fabricante.toLowerCase())||!titulo.toLowerCase().includes(referencia.toLowerCase())||!/[0-9]/.test(referencia)||/^\d{4}$/.test(referencia)||referencia.length>120||fabricante.length>120){
+            await pool.execute("INSERT INTO produto_ficha_pesquisa (peca_id,identidade,status) VALUES (?,?,'sem_identidade') ON DUPLICATE KEY UPDATE identidade=VALUES(identidade),status=VALUES(status),sugestoes=NULL,pesquisado_em=NOW()",[p.id,identidade]);continue;
+          }
+        }
+        const result=await pesquisarFicha(p,fabricante,referencia);
         await pool.execute("INSERT INTO produto_ficha_pesquisa (peca_id,identidade,sugestoes,status) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE identidade=VALUES(identidade),sugestoes=VALUES(sugestoes),status=VALUES(status),pesquisado_em=NOW()",[p.id,identidade,JSON.stringify(result.sugestoes),result.sugestoes.length?'pendente':'sem_evidencia']);
       }catch(e){await pool.execute("INSERT INTO produto_ficha_pesquisa (peca_id,identidade,status) VALUES (?,?,'erro') ON DUPLICATE KEY UPDATE status='erro',pesquisado_em=NOW()",[p.id,identidade]);}
     }
@@ -2532,7 +2542,7 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
     );
 
     if (result.affectedRows) {
-      if (marca && modelo && ano) {
+      if (false && marca && modelo && ano) {
         await pool.execute(
           `INSERT INTO compatibilidades
            (peca_id, marca, modelo, ano_inicio, ano_fim, observacao)
