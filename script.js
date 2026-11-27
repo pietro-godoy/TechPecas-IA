@@ -811,7 +811,7 @@ function tpRenderExternalOffers(externalResult) {
     '<div class="external-section-head">' +
       '<div><span class="section-label dark-label">OFERTAS ENCONTRADAS NA INTERNET</span>' +
       '<h2>Compare antes de comprar</h2>' +
-      '<p>Resultados externos para “' + tpEscape(externalResult.query || externalResult.termo || '') + '”. Preços e disponibilidade podem mudar no site da loja.</p></div>' +
+      '<p>Resultados externos para “' + tpEscape(externalResult.query || externalResult.termo || '') + '”. Resultados filtrados pelo tipo de peça e modelo informado. A aplicação não é garantida; confira referência, ano e versão na loja. Preços e disponibilidade podem mudar.</p></div>' +
       '<span class="external-count">' + products.length + ' opções</span>' +
     '</div>' +
     '<div class="external-offer-grid">' + cards + '</div>' +
@@ -822,7 +822,7 @@ function tpRenderParts(result, externalResult) {
   const pieces = result && Array.isArray(result.pecas) ? result.pecas : [];
   const externalProducts = externalResult && Array.isArray(externalResult.products) ? externalResult.products : [];
 
-  let internalHtml = '';
+  let internalHtml = '<section class="internal-results-section"><div class="result-header"><span class="section-label dark-label">NO TECH PEÇAS</span><h2>Nosso catálogo</h2><p>Nenhum produto correspondente encontrado no catálogo próprio.</p></div></section>';
 
   if (pieces.length) {
     const cards = pieces.map(function(piece, index) {
@@ -839,13 +839,13 @@ function tpRenderParts(result, externalResult) {
         '</div>' +
         '<div class="part-card-top"><span class="part-rank">#' + (index + 1) + '</span>' +
         '<span class="stock-chip ' + (stock > 0 ? 'available' : '') + '">' +
-        (stock > 0 ? stock + ' em estoque' : 'Sem estoque no site') + '</span></div>' +
-        '<h3>' + tpEscape(piece.nome || '') + '</h3>' +
+        (Number(piece.auto_importado)?'Estoque demonstrativo':stock > 0 ? stock + ' em estoque' : 'Sem estoque no site') + '</span></div>' +
+        '<h3><a href="produto.html?id=' + Number(piece.id) + '" style="color:inherit;text-decoration:none">' + tpEscape(piece.nome || '') + '</a></h3>' +
         '<p class="part-meta">' + tpEscape(piece.fabricante || 'Fabricante não informado') + ' · ' + tpEscape(piece.categoria || 'Autopeça') + '</p>' +
-        '<p class="part-description">' + tpEscape(piece.descricao || 'Sem descrição cadastrada.') + '</p>' +
+        '<p class="part-meta">' + (piece.compatibilidade_status==='modelo_mencionado'?'Modelo mencionado no anúncio; aplicação não confirmada.':piece.compatibilidade_status==='aplicacao_cadastrada'?'Aplicação cadastrada; confira motor e versão.':'Compatibilidade não consultada.') + '</p>' + '<p class="part-description">' + tpEscape(piece.descricao || 'Sem descrição cadastrada.') + '</p>' +
         '<div class="price-compare"><div><small>Tech Peças</small><strong>' + sitePrice + '</strong></div>' +
         '<div><small>Parceiros cadastrados</small><strong>' + partnerPrice + '</strong></div></div>' +
-        '<div class="part-actions">' +
+        '<div class="part-actions"><a class="btn-secondary small-button" href="produto.html?id=' + Number(piece.id) + '">Ver detalhes</a>' +
         (piece.preco_site !== null && stock > 0
           ? '<button class="btn-primary small-button tp-add-cart" type="button" data-piece-id="' + Number(piece.id) + '">Adicionar ao carrinho</button>'
           : '') +
@@ -854,7 +854,7 @@ function tpRenderParts(result, externalResult) {
     }).join('');
 
     const filterText = result.filtros
-      ? 'Compatibilidade filtrada para ' + tpEscape(result.filtros.marca) + ' ' + tpEscape(result.filtros.modelo) + ' ' + tpEscape(result.filtros.ano) + '.'
+      ? 'Resultados relacionados a ' + tpEscape(result.filtros.marca) + ' ' + tpEscape(result.filtros.modelo) + ' ' + tpEscape(result.filtros.ano) + '. Confira o status de aplicação de cada peça.'
       : 'Produtos disponíveis no catálogo próprio.';
 
     internalHtml =
@@ -870,7 +870,7 @@ function tpRenderParts(result, externalResult) {
   if (!pieces.length && !externalProducts.length && (!externalResult || externalResult.configured !== false)) {
     tpShowResult(
       '<div class="empty-result"><h2>Nenhuma opção encontrada</h2>' +
-      '<p>Tente pesquisar pelo nome mais comum da peça ou revisar marca, modelo e ano do veículo.</p></div>'
+      '<p>Não encontramos uma peça suficientemente relacionada. Tente outro nome ou revise os dados do veículo.</p></div>' + internalHtml + externalHtml
     );
     return;
   }
