@@ -1,7 +1,7 @@
 const HistoryModel = require('../models/HistoryModel');
 
 async function list(req, res) {
-  const usuarioId = Number(req.query.usuarioId);
+  const usuarioId = Number(req.user.id);
   if (!usuarioId) return res.status(400).json({ ok: false, msg: 'ID do usuário é obrigatório' });
 
   try {
@@ -12,7 +12,7 @@ async function list(req, res) {
 }
 
 async function clear(req, res) {
-  const usuarioId = Number(req.body.usuarioId);
+  const usuarioId = Number(req.user.id);
   if (!usuarioId) return res.status(400).json({ ok: false, msg: 'ID do usuário é obrigatório' });
 
   try {
