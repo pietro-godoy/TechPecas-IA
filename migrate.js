@@ -16,7 +16,7 @@ function buildSslOptions() {
   const caPath=process.env.DB_CA_PATH?path.resolve(__dirname,process.env.DB_CA_PATH):path.join(__dirname,'ca.pem');
   const ca=process.env.DB_CA_PEM?process.env.DB_CA_PEM.replace(/\\n/g,'\n'):fs.existsSync(caPath)?fs.readFileSync(caPath):undefined;
   if(process.env.DB_CA_PATH&&!ca)throw new Error('Certificado CA configurado não foi encontrado.');
-  return {rejectUnauthorized:true,...(ca?{ca}:{})};
+  return {rejectUnauthorized:true,verifyIdentity:true,minVersion:'TLSv1.2',...(ca?{ca}:{})};
 }
 
 async function main() {
