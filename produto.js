@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const specTable=items=>'<table class="pd-spec">'+items.map(v=>'<tr><th>'+e(v.campo)+'</th><td>'+e(v.valor||'Não verificado')+(v.valor&&v.fonte?'<small>'+sourceLinks(v)+'</small>':'')+'</td></tr>').join('')+'</table>';
   root.innerHTML='<div class="pd-market"><div class="pd-main"><article class="pd-card pd-grid"><div><div class="pd-media" id="pdMedia"></div><div id="pdThumb"></div><p class="pd-note" id="pdImageNote"></p></div><div><span class="pd-eyebrow">'+e(p.categoria||'Autopeça')+'</span><h1>'+e(p.nome)+'</h1><p>'+e(manufacturer)+'</p><a id="pdRatingLink" href="#pdReviews">Ver avaliações</a><div class="pd-price">'+price+'</div><p class="pd-note">'+(imported?'Produto importado para catálogo de demonstração. Preço e estoque não confirmados pelo fornecedor.':'Consulte as condições de pagamento no checkout.')+'</p><a href="#pdCompatibility">Conferir veículos compatíveis</a><hr><p><strong>Características principais</strong></p><div id="pdHighlights">Carregando características...</div></div></article>'+
   '<section class="pd-card"><h2>Características do produto</h2><div id="pdTechnical">Carregando ficha técnica...</div></section>'+
-  '<section class="pd-card"><h2>Descrição e informações gerais</h2><p>'+e(p.descricao||'Descrição não cadastrada.')+'</p><div id="pdGeneralSource"></div></section>'+
+  '<section class="pd-card"><h2>Descrição e informações gerais</h2><div id="pdGeneralSource">Carregando informações...</div></section>'+
   '<section class="pd-card" id="pdCompatibility"><span class="section-label dark-label">CONFIRA ANTES DE COMPRAR</span><h2>Esta peça serve no meu veículo?</h2><p>Selecione um veículo da garagem ou informe os dados manualmente.</p><label>Minha garagem<select id="pdGarage"><option value="">Informar manualmente</option></select></label><form id="pdVehicleForm"><div class="pd-vehicle-grid"><label>Marca<input id="pdMarca" required placeholder="Ex.: Volkswagen"></label><label>Modelo<input id="pdModelo" required placeholder="Ex.: Gol"></label><label>Ano<input id="pdAno" type="number" min="1950" max="2100" required placeholder="2015"></label></div><button class="primary-cta button-reset">Verificar compatibilidade</button></form><div id="pdVerdict" class="pd-verdict" role="status">Informe seu veículo para consultar as aplicações cadastradas.</div><h3>Aplicações informadas nas fontes</h3><div id="pdSourceApplications">Consultando informações armazenadas...</div><h3>Aplicações cadastradas</h3>'+(compat.length?'<table class="pd-spec">'+compat.map(c=>'<tr><th>'+e(c.marca)+' '+e(c.modelo)+'</th><td>'+e(c.ano_inicio)+'–'+e(c.ano_fim)+' '+e(c.observacao || '')+'</td></tr>').join('')+'</table>':'<p>Compatibilidade ainda não cadastrada. Confirme com o fabricante antes de comprar.</p>')+'</section>'+
   '<section class="pd-card"><h2>Perguntas sobre a peça</h2><p class="pd-note">Consulte a ficha técnica disponível, sem gerar especificações novas.</p><form id="pdQuestionForm" class="pd-question-form"><label>Pergunta<input id="pdQuestion" required maxlength="300" placeholder="Ex.: Qual é o código OEM?"></label><button class="primary-cta button-reset">Perguntar</button></form><div id="pdQuestionAnswer" class="pd-question-answer" role="status"></div></section>'+
   '<section class="pd-card" id="pdReviews"><h2>Avaliações dos clientes</h2><div id="pdReviewList">Carregando avaliações...</div><form id="pdReviewForm"><label>Nota <select id="pdRating" required><option value="">Selecione</option>'+[5,4,3,2,1].map(n=>'<option value="'+n+'">'+n+' de 5 estrelas</option>').join('')+'</select></label><p><label>Comentário <textarea id="pdComment" maxlength="1000" rows="4" style="width:100%" required></textarea></label></p><button class="primary-cta button-reset">Enviar avaliação</button></form></section></div><aside class="pd-sidebar"><section class="pd-card pd-buy"><span class="pd-eyebrow">Compra na Tech Peças</span><div class="pd-price">'+price+'</div><p class="pd-note">'+(imported?'Estoque de demonstração, sujeito a confirmação.':'Entrega e frete a confirmar no checkout.')+'</p><p class="'+(available?'pd-stock':'pd-note')+'">'+(available?(imported?'Quantidade de demonstração':'Estoque disponível'):'Indisponível')+'</p><label>Quantidade<select id="pdQuantity" '+(available?'':'disabled')+'>'+Array.from({length:available?Math.min(100,Number(p.estoque)):1},(_,i)=>'<option value="'+(i+1)+'">'+(i+1)+' unidade(s)</option>').join('')+'</select></label><div class="pd-actions"><button id="pdBuy" class="primary-cta button-reset" '+(available?'':'disabled')+'>Comprar agora</button><button id="pdAdd" class="secondary-cta button-reset" '+(available?'':'disabled')+'>Adicionar ao carrinho</button></div><p class="pd-note">Confira a referência e a aplicação antes de finalizar.</p></section><section class="pd-card"><h2>Loja</h2><p><strong>Tech Peças IA</strong></p><p class="pd-note">Catálogo de autopeças e comparação de ofertas.</p></section><section class="pd-card"><h2>Meios de pagamento</h2><div class="pd-payment-methods"><span>Pix</span><span>Cartão</span></div><p class="pd-note">Disponibilidade e condições exibidas no checkout. Pagamento processado pelo provedor integrado.</p></section><section class="pd-card"><h2>Produtos relacionados</h2><div id="pdRelated" class="pd-related">Carregando...</div></section></aside></div>';
@@ -43,14 +43,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     garage.onchange=()=>{if(garage.value==='')return;const v=r.veiculos[Number(garage.value)];field('pdMarca').value=v.marca||'';field('pdModelo').value=v.modelo||'';field('pdAno').value=v.ano||'';checkVehicle();};
     if(r.veiculos.length===1){garage.value='0';garage.onchange();}
   });
+  function renderDescription(ficha=[]){
+    const box=field('pdGeneralSource');
+    const type=norm(p.nome);
+    const types=[
+      [/motor de partida|arranque/,'Motor de partida','O motor de partida auxilia no acionamento inicial do motor do veículo. A aplicação depende da referência, da fixação e das características elétricas.'],
+      [/filtro.*oleo/,'Filtro de óleo','O filtro de óleo retém impurezas do lubrificante que circula pelo motor. A referência, as dimensões e o tipo de conexão variam conforme a aplicação.'],
+      [/filtro.*ar/,'Filtro de ar','O filtro de ar retém partículas do ar admitido pelo motor. Formato, dimensões e referência variam de acordo com o veículo.'],
+      [/filtro.*combustivel/,'Filtro de combustível','O filtro de combustível ajuda a reter contaminantes do combustível. A aplicação depende do sistema de alimentação e da referência.'],
+      [/filtro.*cabine/,'Filtro de cabine','O filtro de cabine ajuda a reter partículas do ar que entra no habitáculo. O formato e as dimensões dependem do sistema de ventilação.'],
+      [/vela.*ignicao/,'Vela de ignição','A vela de ignição produz a centelha necessária à combustão em motores de ignição por centelha. Rosca, grau térmico e referência dependem da motorização.'],
+      [/pastilha.*freio/,'Pastilha de freio','A pastilha de freio atua por atrito com o disco para auxiliar na desaceleração. A referência, o eixo e o sistema de freio precisam corresponder ao veículo.'],
+      [/amortecedor/,'Amortecedor','O amortecedor controla as oscilações da suspensão. A aplicação varia conforme o eixo, a configuração da suspensão e a referência.'],
+      [/bieleta/,'Bieleta','A bieleta conecta componentes da suspensão à barra estabilizadora, quando presente. Comprimento, fixação e referência variam conforme o veículo.'],
+      [/alternador/,'Alternador','O alternador fornece energia ao sistema elétrico e auxilia na recarga da bateria enquanto o motor funciona. A aplicação depende da referência e das características elétricas.'],
+      [/bateria/,'Bateria automotiva','A bateria armazena energia para os sistemas elétricos do veículo. Capacidade, tensão, dimensões e polaridade variam conforme a aplicação.']
+    ];
+    const item=types.find(([rx])=>rx.test(type));
+    const raw=String(p.descricao||'').trim();
+    const generic=/^Peça automotiva selecionada pela Tech Peças/i.test(raw);
+    const general=ficha.find(v=>v.campo==='Informações gerais da peça'&&v.valor);
+    const specs=ficha.filter(v=>v.valor&&!['Informações gerais da peça','Aplicações informadas na fonte','Motorização e versão'].includes(v.campo));
+    box.innerHTML='<h3>Sobre o produto</h3><p>'+e(p.nome||'Autopeça')+'</p>'+
+      (item?'<p>'+e(item[2])+'</p><p class="pd-note">Informação geral sobre este tipo de peça; não é uma especificação da unidade anunciada.</p>':'')+
+      (!generic&&raw?'<p>'+e(raw)+'</p>':'')+
+      (general?'<h3>Informações encontradas nas fontes</h3><p>'+e(general.valor)+' '+sourceLinks(general)+'</p>':'')+
+      '<h3>Dados específicos do produto</h3>'+
+      (specs.length?'<ul>'+specs.map(v=>'<li><strong>'+e(v.campo)+':</strong> '+e(v.valor)+' '+sourceLinks(v)+'</li>').join('')+'</ul>':'<p>As especificações desta unidade ainda não foram confirmadas pelas fontes consultadas.</p>')+
+      '<p class="pd-note">Antes de comprar, confira o código da peça e as aplicações na seção de compatibilidade.</p>';
+  }
+  renderDescription();
   async function loadTechnical(){
     const box=field('pdTechnical');
     const r=await apiCall('/catalogo/'+id+'/ficha-tecnica');
     if(!r.ok){box.textContent='Especificações temporariamente indisponíveis.';return;}
     const ficha=r.ficha||[];
     technicalRows=ficha;
-    const general=ficha.find(v=>v.campo==='Informações gerais da peça'&&v.valor);
-    if(general)field('pdGeneralSource').textContent=general.valor;
+    renderDescription(ficha);
     const applications=ficha.filter(v=>['Aplicações informadas na fonte','Motorização e versão'].includes(v.campo)&&v.valor);
     field('pdSourceApplications').innerHTML=applications.length?applications.map(v=>'<p><strong>'+e(v.campo)+': </strong>'+e(v.valor)+( /^https?:\/\//i.test(v.fonte||'')?' · <a target="_blank" rel="noopener noreferrer" href="'+e(v.fonte)+'">Conferir fonte</a>':'')+'</p>').join('')+'<p class="pd-note">Aplicações extraídas de fontes; confirme o código original e a versão antes da compra.</p>':'<p>Não encontramos aplicações com evidência suficiente nas fontes.</p>';
     const mainFields=['Fabricante identificado','Referência do fabricante','Código OEM','Material','Garantia'];
