@@ -106,19 +106,19 @@ function storeCatalogCard(product) {
   const available = Number(product.estoque) > 0 && product.preco_site !== null;
 
   return '<article class="catalog-card">' +
-    '<div class="catalog-card-media">' +
+    '<a class="catalog-card-media" style="display:block" href="produto.html?id=' + Number(product.id) + '" aria-label="Ver detalhes de ' + tpEscape(product.nome || 'Produto') + '">' +
       (image
         ? '<img src="' + tpEscape(image) + '" alt="' + tpEscape(product.nome || 'Produto') + '" loading="lazy"' +
           (fallback ? ' data-fallback="' + tpEscape(fallback) + '"' : '') +
           ' onerror="this.onerror=null;if(this.dataset.fallback){this.src=this.dataset.fallback;}else{this.hidden=true;this.parentElement.insertAdjacentHTML(\'beforeend\',\'<div class=&quot;catalog-placeholder&quot;><span>TP</span></div>\');}">'
         : '<div class="catalog-placeholder"><span>TP</span></div>') +
-    '</div>' +
+    '</a>' +
     '<div class="catalog-card-body">' +
       '<div class="catalog-card-meta">' +
         '<span>' + tpEscape(product.categoria || 'Autopeça') + '</span>' +
         '<span>' + tpEscape(product.sku || '') + '</span>' +
       '</div>' +
-      '<h2>' + tpEscape(product.nome || 'Produto') + '</h2>' +
+      '<h2><a style="color:inherit;text-decoration:none" href="produto.html?id=' + Number(product.id) + '">' + tpEscape(product.nome || 'Produto') + '</a></h2>' +
       '<p class="catalog-maker">' + tpEscape(product.fabricante || 'Fabricante não informado') + '</p>' +
       '<p class="catalog-description">' + tpEscape(product.descricao || 'Sem descrição cadastrada.') + '</p>' +
       '<div class="catalog-card-bottom">' +
