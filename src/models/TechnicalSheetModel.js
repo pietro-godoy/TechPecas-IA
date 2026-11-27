@@ -1,6 +1,9 @@
 const { pool } = require('../config/database');
 const fields = {
   common: ['Fabricante identificado','Aplicações informadas na fonte','Motorização e versão','Conteúdo da embalagem','Informações gerais da peça','Código OEM','Referência do fabricante','Material','Dimensões','Posição de instalação','Garantia'],
+  'motor de partida': ['Dentes do bendix','Sentido de rotação','Voltagem','Potência','Tipo de veículo','Fixação'],
+  alternador: ['Voltagem','Corrente nominal','Tipo de polia','Fixação'],
+  bateria: ['Voltagem','Capacidade','Corrente de partida','Polaridade'],
   filtro: ['Altura','Diâmetro externo','Rosca','Válvula antirretorno'],
   vela: ['Rosca','Comprimento da rosca','Grau térmico','Material do eletrodo','Folga do eletrodo'],
   pastilha: ['Comprimento','Altura','Espessura','Sensor de desgaste','Quantidade por embalagem'],
