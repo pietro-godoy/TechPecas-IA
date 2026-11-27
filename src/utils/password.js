@@ -1,7 +1,7 @@
 const crypto=require('node:crypto');
 const {promisify}=require('node:util');
 const scrypt=promisify(crypto.scrypt);
-const options={N:32768,r:8,p:1,maxmem:64*1024*1024};
+const options={N:32768,r:8,p:3,maxmem:64*1024*1024};
 async function hashPassword(password){
  const salt=crypto.randomBytes(16).toString('hex');
  const key=await scrypt(String(password),salt,64,options);
