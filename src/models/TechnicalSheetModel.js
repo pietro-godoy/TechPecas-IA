@@ -32,4 +32,4 @@ async function save(id,name,entries){
   try{await conn.beginTransaction();for(const r of clean){if(!r.valor)await conn.execute('DELETE FROM produto_ficha_tecnica WHERE peca_id=? AND campo=?',[id,r.campo]);else await conn.execute('INSERT INTO produto_ficha_tecnica (peca_id,campo,valor,fonte) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE valor=VALUES(valor),fonte=VALUES(fonte)',[id,r.campo,r.valor,r.fonte]);}await conn.commit();}catch(e){await conn.rollback();throw e;}finally{conn.release();}
   return read(id,name);
 }
-module.exports={read,save};
+module.exports={read,save,ensure};
