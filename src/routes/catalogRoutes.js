@@ -33,7 +33,7 @@ router.post('/:id/avaliacoes', requireCustomer, async (req,res) => {
 const TechnicalSheet = require('../models/TechnicalSheetModel');
 const { requireAdmin } = require('../middleware/authMiddleware');
 router.get('/:id/ficha-tecnica', async (req,res)=>{
-  try{const p=await CatalogModel.findById(Number(req.params.id));if(!p)return res.status(404).json({ok:false,msg:'Produto não encontrado.'});res.json({ok:true,ficha:await TechnicalSheet.read(p.id,p.nome)});}
+  try{const p=await CatalogModel.findById(Number(req.params.id));if(!p)return res.status(404).json({ok:false,msg:'Produto não encontrado.'});res.json({ok:true,ficha:await TechnicalSheet.readPublic(p)});}
   catch(e){res.status(500).json({ok:false,msg:'Ficha técnica indisponível.'});}
 });
 router.get('/:id/ficha-pesquisa',requireAdmin,async(req,res)=>{
