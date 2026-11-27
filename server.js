@@ -7,6 +7,8 @@ require('dotenv').config();
 const { pool } = require('./src/config/database');
 const { requireAdmin, requireUser, requireCustomer } = require('./src/middleware/authMiddleware');
 const authRoutes = require('./src/routes/authRoutes');
+const UserModel=require('./src/models/UserModel');
+const {rateLimit,sameOrigin,headers}=require('./src/middleware/security');
 const vehicleRoutes = require('./src/routes/vehicleRoutes');
 const catalogRoutes = require('./src/routes/catalogRoutes');
 const historyRoutes = require('./src/routes/historyRoutes');
@@ -174,54 +176,9 @@ async function ensureStoreSchema() {
      WHERE auto_importado = 1`
   );
 
-  const adminUsername = String(process.env.ADMIN_USERNAME || '').trim();
-  const adminPassword = String(process.env.ADMIN_PASSWORD || '');
-
-  if (adminUsername) {
-    const [adminByName] = await pool.execute(
-      "SELECT id FROM usuarios WHERE LOWER(username) = LOWER(?) LIMIT 1",
-      [adminUsername]
-    );
-
-    let adminId = adminByName[0]?.id || null;
-
-    if (!adminId) {
-      const [legacyAdmin] = await pool.execute(
-        "SELECT id FROM usuarios WHERE LOWER(username) = LOWER('Godoy') LIMIT 1"
-      );
-
-      if (legacyAdmin.length) {
-        adminId = legacyAdmin[0].id;
-      } else {
-        const [existingAdmins] = await pool.execute(
-          "SELECT id FROM usuarios WHERE papel = 'admin' ORDER BY id ASC LIMIT 2"
-        );
-
-        if (existingAdmins.length === 1) {
-          adminId = existingAdmins[0].id;
-        }
-      }
-
-      if (adminId) {
-        await pool.execute(
-          "UPDATE usuarios SET username = ?, papel = 'admin' WHERE id = ?",
-          [adminUsername, adminId]
-        );
-      }
-    } else {
-      await pool.execute(
-        "UPDATE usuarios SET papel = 'admin' WHERE id = ?",
-        [adminId]
-      );
-    }
-
-    if (adminId && adminPassword) {
-      await pool.execute(
-        "UPDATE usuarios SET senha = ? WHERE id = ?",
-        [adminPassword, adminId]
-      );
-    }
-  }
+  // Contas administrativas existentes mantêm o papel definido no banco.
+  // Nenhuma conta é promovida por nome de usuário ou durante login.
+  await UserModel.migratePasswords();
 
   if (changes.length) {
     console.log('✅ Estrutura da loja atualizada:', changes.join(', '));
@@ -230,24 +187,27 @@ async function ensureStoreSchema() {
   }
 }
 
-pool.getConnection()
-  .then(async (conn) => {
-    console.log('✅ Conexão com banco de dados estabelecida');
-    conn.release();
-
-    try {
-      await ensureStoreSchema();
-    } catch (error) {
-      console.error('❌ Erro ao atualizar estrutura da loja:', error.message);
-    }
-  })
-  .catch((err) => {
-    console.error('❌ Erro ao conectar ao banco de dados:', err.message);
-  });
-
-app.use(cors());
+app.disable('x-powered-by');
+if(process.env.RENDER)app.set('trust proxy',1);
+app.use(headers);
+const allowedOrigins=String(process.env.ALLOWED_ORIGINS||'').split(',').map(x=>x.trim()).filter(Boolean);
+app.use(cors({origin(origin,callback){callback(null,Boolean(origin&&allowedOrigins.includes(origin)));},credentials:true}));
 app.use(express.json({ limit: '1mb' }));
-app.use(express.static(__dirname));
+app.use('/api',sameOrigin);
+const publicFiles=new Set(['index.html','login.html','buscar.html','catalogo.html','produto.html','garagem.html','carrinho.html','pedidos.html','admin.html','admin-catalogo.html','admin-pedidos.html','style.css','script.js','loja.js','produto.js','admin.js','modal.js','favicon.svg']);
+app.get('/',(req,res)=>res.sendFile('index.html',{root:__dirname}));
+app.use((req,res,next)=>{
+  if(!['GET','HEAD'].includes(req.method))return next();
+  const name=req.path.slice(1);
+  if(!publicFiles.has(name))return next();
+  return res.sendFile(name,{root:__dirname,dotfiles:'deny'});
+});
+app.use('/assets',(req,res,next)=>{
+  if(!/\.(png|jpe?g|webp|gif|svg|ico|woff2?)$/i.test(req.path))return res.sendStatus(404);
+  next();
+},express.static(require('path').join(__dirname,'assets'),{dotfiles:'deny',index:false}));
+const searchLimit=rateLimit({limit:60,windowMs:15*60*1000,key:req=>req.user?.id||req.ip});
+const externalLimit=rateLimit({limit:20,windowMs:15*60*1000,key:req=>req.user?.id||req.ip});
 app.use('/api/auth', authRoutes);
 app.use('/api/veiculos', vehicleRoutes);
 app.use('/api/catalogo', catalogRoutes);
@@ -812,13 +772,13 @@ async function saveHistory(usuarioId, termo, tipo = 'busca') {
 
 // ------------------- INTELIGÊNCIA ARTIFICIAL/TRIAGEM --------------------
 
-app.post('/api/diagnostico/analisar', async (req, res) => {
-  const usuarioId = Number(req.body.usuarioId) || null;
+app.post('/api/diagnostico/analisar', requireUser, externalLimit, async (req, res) => {
+  const usuarioId = Number(req.user.id);
   const marca = normalizeText(req.body.marca);
   const modelo = normalizeText(req.body.modelo);
   const ano = Number(req.body.ano) || null;
   const versao = normalizeText(req.body.versao);
-  const problema = normalizeText(req.body.problema);
+  const problema = normalizeText(req.body.problema).slice(0,2000);
 
   if (!marca || !modelo || !ano || problema.length < 5) {
     return res.status(400).json({
@@ -892,7 +852,7 @@ Regras:
     console.error(
       'Erro no diagnóstico assistido:',
       error.code || getGeminiStatus(error) || 'erro',
-      error.message
+      'Falha do provedor'
     );
     const temporario = isTransientGeminiError(error);
     return res.status(temporario ? 503 : 500).json({
@@ -900,7 +860,7 @@ Regras:
       msg: temporario
         ? 'O serviço de análise está temporariamente ocupado. Tente novamente em instantes.'
         : 'Não foi possível analisar o problema agora.',
-      detalhe: process.env.NODE_ENV === 'development' ? error.message : undefined
+      detalhe: undefined
     });
   }
 });
@@ -1796,7 +1756,7 @@ app.post('/api/webhooks/asaas', async (req, res) => {
     return res.status(503).json({ ok: false, msg: 'Webhook Asaas não configurado.' });
   }
 
-  if (!receivedToken || receivedToken !== configuredToken) {
+  if (!receivedToken || !crypto.timingSafeEqual(crypto.createHash('sha256').update(receivedToken).digest(),crypto.createHash('sha256').update(configuredToken).digest())) {
     return res.status(401).json({ ok: false, msg: 'Token de Webhook inválido.' });
   }
 
@@ -1806,7 +1766,7 @@ app.post('/api/webhooks/asaas', async (req, res) => {
   const paymentId = normalizeText(payment.id);
   const externalReference = Number(payment.externalReference) || null;
 
-  if (!eventId || !event) {
+  if (!eventId || !event || !paymentId) {
     return res.status(400).json({ ok: false, msg: 'Evento inválido.' });
   }
 
@@ -1828,30 +1788,14 @@ app.post('/api/webhooks/asaas', async (req, res) => {
 
     let pedido = null;
 
-    if (paymentId || externalReference) {
-      const where = [];
-      const params = [];
-
-      if (paymentId) {
-        where.push('asaas_payment_id = ?');
-        params.push(paymentId);
+    if(paymentId){
+      const [rows]=await conn.execute(
+        'SELECT id,status,estoque_devolvido,valor_total FROM pedidos WHERE asaas_payment_id=? LIMIT 1 FOR UPDATE',[paymentId]);
+      const candidate=rows[0];
+      if(candidate&&(!externalReference||Number(candidate.id)===externalReference)){
+        const paid=mapAsaasEventToOrderStatus(event)==='pago';
+        if(!paid||(Number.isFinite(Number(payment.value))&&Math.round(Number(payment.value)*100)===Math.round(Number(candidate.valor_total)*100)))pedido=candidate;
       }
-
-      if (externalReference) {
-        where.push('id = ?');
-        params.push(externalReference);
-      }
-
-      const [rows] = await conn.execute(
-        `SELECT id, status, estoque_devolvido
-         FROM pedidos
-         WHERE ${where.join(' OR ')}
-         LIMIT 1
-         FOR UPDATE`,
-        params
-      );
-
-      pedido = rows[0] || null;
     }
 
     if (pedido) {
@@ -1981,12 +1925,15 @@ app.post('/api/pedidos', requireCustomer, async (req, res) => {
   const formaPagamento = normalizeText(req.body.formaPagamento).toLowerCase();
   const endereco = req.body.endereco && typeof req.body.endereco === 'object' ? req.body.endereco : {};
 
-  const itens = itensRecebidos
-    .map((item) => ({
-      pecaId: Number(item.pecaId),
-      quantidade: Math.max(1, Math.min(99, Number(item.quantidade) || 1))
-    }))
-    .filter((item) => item.pecaId);
+  const grouped=new Map();
+  let validItems=itensRecebidos.length>0&&itensRecebidos.length<=100;
+  for(const item of itensRecebidos.slice(0,100)){
+    const id=Number(item?.pecaId),q=Number(item?.quantidade);
+    if(!Number.isSafeInteger(id)||id<=0||!Number.isSafeInteger(q)||q<1||q>99){validItems=false;break;}
+    grouped.set(id,(grouped.get(id)||0)+q);
+    if(grouped.get(id)>99){validItems=false;break;}
+  }
+  const itens=validItems?[...grouped].map(([pecaId,quantidade])=>({pecaId,quantidade})):[];
 
   const pagamentoValido = ['pix', 'cartao'].includes(formaPagamento);
   const enderecoValido = endereco.cep && endereco.logradouro && endereco.numero &&
@@ -2080,7 +2027,7 @@ app.post('/api/pedidos', requireCustomer, async (req, res) => {
         frete.toFixed(2),
         total.toFixed(2),
         formaPagamento,
-        JSON.stringify(endereco),
+        JSON.stringify(Object.fromEntries(['cep','logradouro','numero','complemento','bairro','cidade','estado'].map(k=>[k,String(endereco[k]||'').slice(0,250)]))),
         'aguardando_pagamento',
         checkoutToken
       ]
@@ -2644,8 +2591,8 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
 
 // -------------------- OFERTAS EXTERNAS --------------------
 
-app.post('/api/ofertas-externas/pesquisar', async (req, res) => {
-  const termo = normalizeText(req.body.termo);
+app.post('/api/ofertas-externas/pesquisar', requireUser, externalLimit, async (req, res) => {
+  const termo = normalizeText(req.body.termo).slice(0,200);
   const marca = normalizeText(req.body.marca);
   const modelo = normalizeText(req.body.modelo);
   const ano = Number(req.body.ano) || null;
@@ -2683,17 +2630,17 @@ app.post('/api/ofertas-externas/pesquisar', async (req, res) => {
       ...result
     });
   } catch (error) {
-    console.error('Erro na busca externa:', error.message);
+    console.error('Erro na busca externa:', error.code||'falha');
     return res.status(502).json({
       ok: false,
       configured: Boolean(process.env.SERPAPI_KEY),
       msg: 'Não foi possível consultar ofertas externas agora.',
-      detalhe: process.env.NODE_ENV === 'development' ? error.message : undefined
+      detalhe: undefined
     });
   }
 });
 
-app.post('/api/ofertas-externas/lojas', async (req, res) => {
+app.post('/api/ofertas-externas/lojas', requireUser, externalLimit, async (req, res) => {
   const productId = normalizeText(req.body.productId);
   const pageToken = normalizeText(req.body.pageToken);
 
@@ -2705,21 +2652,21 @@ app.post('/api/ofertas-externas/lojas', async (req, res) => {
     const result = await loadExternalProductStores({ productId, pageToken });
     return res.json({ ok: true, ...result });
   } catch (error) {
-    console.error('Erro ao carregar lojas externas:', error.message);
+    console.error('Erro ao carregar lojas externas:', error.code||'falha');
     return res.status(502).json({
       ok: false,
       configured: Boolean(process.env.SERPAPI_KEY),
       msg: 'Não foi possível carregar as lojas deste produto agora.',
-      detalhe: process.env.NODE_ENV === 'development' ? error.message : undefined
+      detalhe: undefined
     });
   }
 });
 
 // -------------------- BUSCA DIRETA DE PEÇAS --------------------
 
-app.post('/api/pecas/pesquisar', async (req, res) => {
-  const usuarioId = Number(req.body.usuarioId) || null;
-  const termo = normalizeText(req.body.termo);
+app.post('/api/pecas/pesquisar', requireUser, searchLimit, async (req, res) => {
+  const usuarioId = Number(req.user.id);
+  const termo = normalizeText(req.body.termo).slice(0,200);
   const marca = normalizeText(req.body.marca);
   const modelo = normalizeText(req.body.modelo);
   const ano = Number(req.body.ano) || null;
@@ -2785,7 +2732,10 @@ app.post('/api/pecas/buscar', async (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+async function start(){
+  await pool.query('SELECT 1');
+  await ensureStoreSchema();
+  app.listen(PORT, () => {
   setTimeout(atualizarFichasAutomaticamente, 30000);
   setInterval(atualizarFichasAutomaticamente, 15 * 60 * 1000).unref();
   console.log(`\n✅ Tech Peças rodando em ${API_BASE_URL}`);
@@ -2795,3 +2745,5 @@ app.listen(PORT, () => {
   console.log('GET  /api/veiculos');
   console.log('POST /api/veiculos\n');
 });
+}
+start().catch(e=>{console.error('Inicialização interrompida por falha na configuração ou migração:',e.code||'erro');process.exitCode=1;pool.end().catch(()=>{});});
