@@ -49,17 +49,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     research.innerHTML='<h3>Pesquisar especificações com IA</h3><p class="pd-note">Informe a referência exata. Confira cada evidência na fonte original antes de salvar.</p><label>Fabricante real<input id="pdResearchMaker" maxlength="120"></label><label>Referência exata / OEM<input id="pdResearchRef" maxlength="120"></label><button type="button" class="secondary-cta button-reset" id="pdResearchBtn">Pesquisar com IA</button><div id="pdResearchResults" aria-live="polite"></div>';
     box.append(research,form);
     research.querySelector('#pdResearchMaker').value=p.fabricante||'';
-    research.querySelector('#pdResearchBtn').onclick=async()=>{
-      const b=research.querySelector('#pdResearchBtn'), out=research.querySelector('#pdResearchResults');
-      const fabricante=research.querySelector('#pdResearchMaker').value.trim(), referencia=research.querySelector('#pdResearchRef').value.trim();
-      if(!fabricante||!referencia){out.textContent='Informe fabricante e referência.';return;}
-      b.disabled=true;out.textContent='Consultando fontes e organizando especificações...';
-      try{
-        const r=await apiCall('/admin/produtos/'+id+'/pesquisar-ficha',{method:'POST',body:JSON.stringify({fabricante,referencia})});
-        if(!r.ok){out.textContent=r.msg||'Pesquisa indisponível.';return;}
-        out.textContent='';
-        if(!r.sugestoes?.length){out.textContent='Nenhuma especificação com evidência suficiente foi encontrada.';return;}
-        r.sugestoes.forEach(v=>{
+    function renderSuggestions(r){
+      const out=research.querySelector('#pdResearchResults');
+      out.textContent='';
+      if(!r.sugestoes?.length){out.textContent='Nenhuma especificação com evidência suficiente foi encontrada.';return;}
+      r.sugestoes.forEach(v=>{
           const i=ficha.findIndex(x=>x.campo===v.campo);if(i<0)return;
           const card=document.createElement('article');card.className='pd-review-item';
           const title=document.createElement('strong');title.textContent=v.campo+': '+v.valor;
@@ -68,6 +62,17 @@ document.addEventListener('DOMContentLoaded', async () => {
           const use=document.createElement('button');use.type='button';use.className='secondary-cta button-reset';use.textContent='Usar sugestão';use.onclick=()=>{form.querySelector('[data-value="'+i+'"]').value=v.valor;form.querySelector('[data-source="'+i+'"]').value=v.fonte;use.textContent='Sugestão selecionada';};
           card.append(title,evidence,link,document.createElement('p'),use);out.append(card);
         });
+    }
+    apiCall('/catalogo/'+id+'/ficha-pesquisa').then(r=>{if(r.ok&&r.sugestoes?.length)renderSuggestions(r);}).catch(()=>{});
+    research.querySelector('#pdResearchBtn').onclick=async()=>{
+      const b=research.querySelector('#pdResearchBtn'), out=research.querySelector('#pdResearchResults');
+      const fabricante=research.querySelector('#pdResearchMaker').value.trim(), referencia=research.querySelector('#pdResearchRef').value.trim();
+      if(!fabricante||!referencia){out.textContent='Informe fabricante e referência.';return;}
+      b.disabled=true;out.textContent='Consultando fontes e organizando especificações...';
+      try{
+        const r=await apiCall('/admin/produtos/'+id+'/pesquisar-ficha',{method:'POST',body:JSON.stringify({fabricante,referencia})});
+        if(!r.ok){out.textContent=r.msg||'Pesquisa indisponível.';return;}
+        renderSuggestions(r);
       }catch(err){out.textContent='Não foi possível concluir a pesquisa.';}finally{b.disabled=false;}
     };
     form.onsubmit=async ev=>{ev.preventDefault();const button=form.querySelector('button');button.disabled=true;try{const result=await apiCall('/catalogo/'+id+'/ficha-tecnica',{method:'PUT',body:JSON.stringify({ficha:ficha.map((v,i)=>({campo:v.campo,valor:form.querySelector('[data-value="'+i+'"]').value,fonte:form.querySelector('[data-source="'+i+'"]').value}))})});if(!result.ok)return showWarning(result.msg||'Erro ao salvar');await loadTechnical();}finally{button.disabled=false;}};
