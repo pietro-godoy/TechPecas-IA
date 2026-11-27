@@ -1018,9 +1018,9 @@ app.post('/api/admin/integracoes/testar',requireAdmin,async(req,res)=>{
   try{
     const testes=await Promise.all([
       probe('MySQL',async()=>{await pool.query('SELECT 1');return {detalhe:'Conexão validada'};}),
-      probe('SerpApi',async()=>{if(!process.env.SERPAPI_KEY)return {status:'nao_configurado',detalhe:'SERPAPI_KEY ausente'};const params=new URLSearchParams({engine:'google_shopping',q:'filtro de oleo automotivo',gl:'br',hl:'pt-br',api_key:process.env.SERPAPI_KEY});const data=await fetchJsonWithTimeout('https://serpapi.com/search.json?'+params);if(data.error)throw new Error('Pesquisa recusada');return {detalhe:'Consulta respondida',resultados:Array.isArray(data.shopping_results)?data.shopping_results.length:0};}),
+      probe('SerpApi',async()=>{if(!process.env.SERPAPI_KEY)return {status:'nao_configurado',detalhe:'SERPAPI_KEY ausente'};const params=new URLSearchParams({engine:'google_shopping',q:'filtro de oleo automotivo',gl:'br',hl:'pt-br',api_key:process.env.SERPAPI_KEY});const response=await fetch('https://serpapi.com/search.json?'+params,{signal:AbortSignal.timeout(12000)});if(!response.ok){const e=new Error('Pesquisa recusada');e.status=response.status;throw e;}const data=await response.json();if(data.error)throw new Error('Pesquisa recusada');return {detalhe:'Consulta respondida',resultados:Array.isArray(data.shopping_results)?data.shopping_results.length:0};}),
       probe('Gemini',async()=>{if(!process.env.GOOGLE_API_KEY)return {status:'nao_configurado',detalhe:'GOOGLE_API_KEY ausente'};const data=await generateJsonWithGemini('Retorne apenas JSON {"teste":"ok"}');if(data?.teste!=='ok')throw new Error('Resposta inesperada');return {detalhe:'Resposta JSON validada'};}),
-      probe('Fichas técnicas',async()=>{await require('./src/models/TechnicalSheetModel').ensure();const [rows]=await pool.query('SELECT status,COUNT(*) AS total,MAX(pesquisado_em) AS ultima FROM produto_ficha_pesquisa GROUP BY status');const [[catalogo]]=await pool.query('SELECT COUNT(*) AS total FROM pecas WHERE ativo=1');return {detalhe:process.env.FICHA_AUTO_ENABLED==='false'?'Rotina desativada':'Histórico da rotina automática',status:process.env.FICHA_AUTO_ENABLED==='false'?'desativado':'ok',catalogo:Number(catalogo.total),fila:rows};})
+      probe('Fichas técnicas',async()=>{await require('./src/models/TechnicalSheetModel').ensure();await pool.query("CREATE TABLE IF NOT EXISTS produto_ficha_pesquisa (peca_id INT PRIMARY KEY, identidade VARCHAR(300) NOT NULL, sugestoes JSON NULL, status VARCHAR(30) NOT NULL, pesquisado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");const [rows]=await pool.query('SELECT status,COUNT(*) AS total,MAX(pesquisado_em) AS ultima FROM produto_ficha_pesquisa GROUP BY status');const [[catalogo]]=await pool.query('SELECT COUNT(*) AS total FROM pecas WHERE ativo=1');return {detalhe:process.env.FICHA_AUTO_ENABLED==='false'?'Rotina desativada':'Histórico da rotina automática',status:process.env.FICHA_AUTO_ENABLED==='false'?'desativado':'ok',catalogo:Number(catalogo.total),fila:rows};})
     ]);res.json({ok:true,testes,executado_em:new Date().toISOString()});
   }finally{integrationTestBusy=false;}
 });
@@ -2535,10 +2535,25 @@ async function syncImportedNamesForSearch({ termo, marca, modelo, ano }) {
 
 async function extractOfferFacts(product, term){
   const title=normalizeText(product.title||term).slice(0,300);
-  const snippet=normalizeText(product.description||product.snippet||'').slice(0,1000);
-  const link=/^https?:\/\//i.test(product.productLink||'')?product.productLink:null;
-  const explicitBrand=marcaRealDoAnuncio(product.brand);
-  const fields=require('./src/models/TechnicalSheetModel').schema(title);
+  let snippet=normalizeText(product.description||product.snippet||'').slice(0,1000);
+  let link=/^https?:\/\//i.test(product.productLink||'')?product.productLink:null;
+  let explicitBrand=marcaRealDoAnuncio(product.brand);
+  // Consulta o mesmo produto pelo identificador do resultado, não outro anúncio semelhante.
+  if(process.env.SERPAPI_KEY&&(product.productId||product.pageToken)){
+    try{
+      const params=new URLSearchParams({engine:'google_product',gl:'br',hl:'pt-br',api_key:process.env.SERPAPI_KEY});
+      if(product.pageToken)params.set('page_token',product.pageToken);else params.set('product_id',product.productId);
+      const response=await fetchJsonWithTimeout('https://serpapi.com/search.json?'+params,6000);
+      const detail=response.product_results||{};
+      const detailLink=[detail.link,detail.product_link,link].find(v=>typeof v==='string'&&/^https?:\/\//i.test(v));
+      if(!explicitBrand&&typeof detail.brand==='string')explicitBrand=marcaRealDoAnuncio(detail.brand);
+      const extra=[detail.description,detail.snippet,...(Array.isArray(detail.highlights)?detail.highlights:[])].filter(v=>typeof v==='string').join(' ');
+      const specs=Array.isArray(detail.specifications)?detail.specifications:[];
+      const factual=specs.flatMap(v=>Array.isArray(v?.attributes)?v.attributes:[v]).map(v=>v&&typeof v==='object'&&typeof (v.name||v.label)==='string'&&typeof v.value==='string'?(v.name||v.label)+': '+v.value:'').filter(Boolean).join(' ; ');
+      if(detailLink){link=detailLink;snippet=[snippet,extra,factual].filter(Boolean).join(' ').slice(0,2500);}
+    }catch(e){console.warn('Detalhes da oferta indisponíveis:',e.code||'erro');}
+  }
+  const fields=require('./src/models/TechnicalSheetModel').schema(title.slice(0,120));
   let brand=explicitBrand, facts=[];
   if(process.env.GOOGLE_API_KEY){
     try{
@@ -2551,6 +2566,7 @@ async function extractOfferFacts(product, term){
       }
     }catch(e){console.warn('Extração de oferta indisponível:',e.code||getGeminiStatus(e)||'erro');}
   }
+  if(link&&brand&&!facts.some(v=>v.campo==='Fabricante identificado'))facts.unshift({campo:'Fabricante identificado',valor:brand,fonte:link});
   return {title,brand,facts,link};
 }
 
@@ -2567,6 +2583,7 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
   if (!candidates.length) return [];
 
   const imported = [];
+  const offers=await Promise.all(candidates.map(product=>extractOfferFacts(product,termo)));
 
   for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
     const product = candidates[candidateIndex];
@@ -2577,7 +2594,7 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
     const sourceUrl = /^https?:\/\//i.test(product.productLink || '') ? product.productLink : null;
     const thumbnail = /^https?:\/\//i.test(product.thumbnail || '') ? product.thumbnail : null;
     const vehicleText = [marca, modelo, ano].filter(Boolean).join(' ');
-    const offer = await extractOfferFacts(product, termo);
+    const offer = offers[candidateIndex];
     const importedName = offer.title.slice(0,120);
     const category = inferImportedCategory([termo, product.title].filter(Boolean).join(' '));
     const description =
@@ -2601,7 +2618,7 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
         demoStock,
         thumbnail,
         normalizeText(product.source) || 'Loja externa',
-        sourceUrl,
+        offer.link || sourceUrl,
         product.numericPrice,
         normalizeText([termo, marca, modelo, ano].filter(Boolean).join(' | ')).slice(0, 255)
       ]
