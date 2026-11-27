@@ -482,8 +482,9 @@ async function reconcileLatePaidStock(conn, pedidoId) {
     : { ok: false, status: 'pago_revisar_estoque' };
 }
 
+const searchRelevance = require('./src/utils/searchRelevance');
 function buildExternalSearchQuery({ termo, marca, modelo, ano }) {
-  return [termo, marca, modelo, ano, 'autopeça']
+  return [(/\bbatente\b/i.test(termo)&&/porta|fechadura/i.test(termo)?'"batente" fechadura porta':termo), marca, modelo, ano, 'autopeça']
     .filter(Boolean)
     .join(' ')
     .replace(/\s+/g, ' ')
@@ -540,7 +541,7 @@ async function searchExternalProducts({ termo, marca, modelo, ano }) {
   const data = await fetchJsonWithTimeout('https://serpapi.com/search.json?' + params.toString());
   const rows = Array.isArray(data.shopping_results) ? data.shopping_results : [];
 
-  const products = rows.slice(0, 12).map((item, index) => ({
+  const products = rows.slice(0, 40).map((item, index) => ({
     position: Number(item.position || index + 1),
     productId: item.product_id ? String(item.product_id) : null,
     pageToken: item.immersive_product_page_token || null,
@@ -565,7 +566,8 @@ async function searchExternalProducts({ termo, marca, modelo, ano }) {
   return {
     configured: true,
     query,
-    products,
+    products: products.filter(product=>searchRelevance.relevantOffer(termo,product,{marca,modelo,ano})).slice(0,12),
+    descartados: products.filter(product=>!searchRelevance.relevantOffer(termo,product,{marca,modelo,ano})).length,
     provider: 'google_shopping'
   };
 }
@@ -2353,34 +2355,28 @@ app.get('/api/pedidos/:id', requireCustomer, async (req, res) => {
   }
 });
 
-async function hasActiveCatalogMatch({ termo, marca, modelo, ano }) {
-  const like = '%' + termo + '%';
-  const params = [like, like, like, like];
-  let compatibility = '';
-
-  if (marca && modelo && ano) {
-    compatibility = `
-      AND EXISTS (
-        SELECT 1 FROM compatibilidades c
-        WHERE c.peca_id = p.id
-          AND LOWER(c.marca) = LOWER(?)
-          AND LOWER(c.modelo) = LOWER(?)
-          AND ? BETWEEN c.ano_inicio AND c.ano_fim
-      )`;
-    params.push(marca, modelo, ano);
-  }
-
-  const [rows] = await pool.execute(
-    `SELECT p.id
-     FROM pecas p
-     WHERE p.ativo = 1
-       AND (p.nome LIKE ? OR p.fabricante LIKE ? OR p.categoria LIKE ? OR p.auto_import_term LIKE ?)
-       ${compatibility}
-     LIMIT 1`,
-    params
-  );
-
-  return rows.length > 0;
+async function findRelevantCatalogParts({termo,marca,modelo,ano}){
+  const tokens=searchRelevance.tokens(termo).slice(0,10);
+  if(!tokens.length)return [];
+  const batente=/\bbatente\b/i.test(termo)&&/porta|fechadura/i.test(termo);
+  const lookup=batente?[...new Set([...tokens,'striker','contra fechadura','contrafechadura','fecho'])]:tokens;
+  const clauses=lookup.map(()=>'(p.nome LIKE ? OR p.descricao LIKE ? OR p.sku LIKE ?)');
+  const params=[marca||'',modelo||'',Number(ano)||0,...lookup.flatMap(w=>Array(3).fill('%'+w+'%'))];
+  const [rows]=await pool.execute(`SELECT p.id,p.nome,p.descricao,p.fabricante,p.categoria,p.preco_site,p.estoque,p.imagem_url,p.sku,p.auto_importado,
+    (SELECT MIN(o.preco) FROM ofertas o WHERE o.peca_id=p.id AND o.disponivel=1) AS menor_preco_parceiro,
+    (SELECT COUNT(*) FROM ofertas o WHERE o.peca_id=p.id AND o.disponivel=1) AS total_ofertas,
+    EXISTS(SELECT 1 FROM compatibilidades c WHERE c.peca_id=p.id AND LOWER(c.marca)=LOWER(?) AND LOWER(c.modelo)=LOWER(?) AND ? BETWEEN c.ano_inicio AND c.ano_fim AND COALESCE(c.observacao,'') NOT LIKE '%automaticamente a partir da busca%') AS aplicacao_cadastrada
+    FROM pecas p WHERE p.ativo=1 AND (${clauses.join(' OR ')}) ORDER BY p.id DESC LIMIT 200`,params);
+  return rows.filter(p=>{
+    const original=Number(p.auto_importado)?(String(p.descricao||'').split('Referência externa: ')[1]?.split('. Consulte as especificações')[0]||p.nome):p.nome;
+    if(!searchRelevance.matchesPart(termo,original)&&searchRelevance.norm(p.sku)!==searchRelevance.norm(termo))return false;
+    if(!modelo)return true;
+    if(Number(p.aplicacao_cadastrada))return true;
+    return searchRelevance.vehicleStatus(original,{marca,modelo,ano})==='modelo_mencionado';
+  }).map(p=>({...p,compatibilidade_status:!modelo?'nao_consultada':Number(p.aplicacao_cadastrada)?'aplicacao_cadastrada':'modelo_mencionado'})).sort((a,b)=>Number(b.aplicacao_cadastrada)-Number(a.aplicacao_cadastrada)||Number(b.estoque>0)-Number(a.estoque>0)||Number(a.preco_site||Infinity)-Number(b.preco_site||Infinity)).slice(0,30);
+}
+async function hasActiveCatalogMatch(filters){
+  return (await findRelevantCatalogParts(filters)).length>0;
 }
 
 function externalDraftSku(product) {
@@ -2577,7 +2573,8 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
       numericPrice: Number(product.extractedPrice)
     }))
     .filter((product) => Number.isFinite(product.numericPrice) && product.numericPrice > 0)
-    .sort((a, b) => b.numericPrice - a.numericPrice)
+    .filter(product=>searchRelevance.relevantOffer(termo,product,{marca,modelo,ano}))
+    .sort((a, b) => a.numericPrice - b.numericPrice)
     .slice(0, 2);
 
   if (!candidates.length) return [];
@@ -2660,7 +2657,7 @@ app.post('/api/ofertas-externas/pesquisar', async (req, res) => {
   try {
     const result = await searchExternalProducts({ termo, marca, modelo, ano });
 
-    await syncImportedNamesForSearch({ termo, marca, modelo, ano });
+    // Não reativar produtos antigos nem restaurar estoques a partir de uma busca.
 
     let autoImportados = [];
 
@@ -2732,47 +2729,7 @@ app.post('/api/pecas/pesquisar', async (req, res) => {
   }
 
   try {
-    const like = `%${termo}%`;
-    const params = [like, like, like, like];
-    let compatClause = '';
-
-    if (marca && modelo && ano) {
-      compatClause = `
-        AND EXISTS (
-          SELECT 1 FROM compatibilidades c
-          WHERE c.peca_id = p.id
-            AND LOWER(c.marca) = LOWER(?)
-            AND LOWER(c.modelo) = LOWER(?)
-            AND ? BETWEEN c.ano_inicio AND c.ano_fim
-        )`;
-      params.push(marca, modelo, ano);
-    }
-
-    const [pecas] = await pool.execute(
-      `SELECT
-         p.id,
-         p.nome,
-         p.descricao,
-         p.fabricante,
-         p.categoria,
-         p.preco_site,
-         p.estoque,
-         p.imagem_url,
-         p.sku,
-         p.auto_importado,
-         MIN(CASE WHEN o.disponivel = 1 THEN o.preco END) AS menor_preco_parceiro,
-         COUNT(CASE WHEN o.disponivel = 1 THEN 1 END) AS total_ofertas
-       FROM pecas p
-       LEFT JOIN ofertas o ON o.peca_id = p.id
-       WHERE (p.nome LIKE ? OR p.fabricante LIKE ? OR p.categoria LIKE ? OR p.auto_import_term LIKE ?)
-       ${compatClause}
-       GROUP BY p.id
-       ORDER BY
-         CASE WHEN p.estoque > 0 THEN 0 ELSE 1 END,
-         COALESCE(p.preco_site, MIN(o.preco), 999999) ASC
-       LIMIT 30`,
-      params
-    );
+    const pecas=await findRelevantCatalogParts({termo,marca,modelo,ano});
 
     if (usuarioId) await saveHistory(usuarioId, termo, 'peca');
 
