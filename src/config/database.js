@@ -17,7 +17,7 @@ function buildDbSslOptions() {
   const caPath=process.env.DB_CA_PATH?path.resolve(ROOT_DIR,process.env.DB_CA_PATH):path.join(ROOT_DIR,'ca.pem');
   const ca=process.env.DB_CA_PEM?process.env.DB_CA_PEM.replace(/\\n/g,'\n'):fs.existsSync(caPath)?fs.readFileSync(caPath):undefined;
   if(process.env.DB_CA_PATH&&!ca)throw new Error('Certificado CA configurado não foi encontrado.');
-  return {rejectUnauthorized:true,...(ca?{ca}:{})};
+  return {rejectUnauthorized:true,verifyIdentity:true,minVersion:'TLSv1.2',...(ca?{ca}:{})};
 }
 
 const pool = mysql.createPool({
