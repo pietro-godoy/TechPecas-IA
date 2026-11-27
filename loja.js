@@ -92,14 +92,25 @@ function storeSafeImage(url) {
   return /^https?:\/\//i.test(String(url || '')) ? String(url) : '';
 }
 
+function storeCatalogFallback(product) {
+  const name = String(product.nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/filtros?\s+(?:de\s+)?oleo/.test(name)) return 'assets/catalogo/filtro-oleo.svg';
+  if (/velas?\s+(?:de\s+)?ignicao/.test(name)) return 'assets/catalogo/vela-ignicao.svg';
+  if (/pastilhas?\s+(?:de\s+)?freio/.test(name)) return 'assets/catalogo/pastilha-freio.svg';
+  return '';
+}
+
 function storeCatalogCard(product) {
-  const image = storeSafeImage(product.imagem_url);
+  const fallback = storeCatalogFallback(product);
+  const image = storeSafeImage(product.imagem_url) || fallback;
   const available = Number(product.estoque) > 0 && product.preco_site !== null;
 
   return '<article class="catalog-card">' +
     '<div class="catalog-card-media">' +
       (image
-        ? '<img src="' + tpEscape(image) + '" alt="" loading="lazy">'
+        ? '<img src="' + tpEscape(image) + '" alt="' + tpEscape(product.nome || 'Produto') + '" loading="lazy"' +
+          (fallback ? ' data-fallback="' + tpEscape(fallback) + '"' : '') +
+          ' onerror="this.onerror=null;if(this.dataset.fallback){this.src=this.dataset.fallback;}else{this.hidden=true;this.parentElement.insertAdjacentHTML(\'beforeend\',\'<div class=&quot;catalog-placeholder&quot;><span>TP</span></div>\');}">'
         : '<div class="catalog-placeholder"><span>TP</span></div>') +
     '</div>' +
     '<div class="catalog-card-body">' +
