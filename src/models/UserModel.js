@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { pool } = require('../config/database');
+const {hashPassword,verifyPassword,isHash,tokenHash}=require('../utils/password');
 
 async function findDuplicate(username, email) {
   const [rows] = await pool.execute(
@@ -12,17 +13,19 @@ async function findDuplicate(username, email) {
 async function create({ username, password, email }) {
   const [result] = await pool.execute(
     'INSERT INTO usuarios (username, senha, email) VALUES (?, ?, ?)',
-    [username, password, email || null]
+    [username, await hashPassword(password), email || null]
   );
   return result.insertId;
 }
 
 async function findByCredentials(username, password) {
   const [rows] = await pool.execute(
-    'SELECT id, username, email, papel FROM usuarios WHERE LOWER(username) = LOWER(?) AND senha = ? LIMIT 1',
-    [username, password]
+    'SELECT id, username, email, papel, senha FROM usuarios WHERE LOWER(username) = LOWER(?) LIMIT 1',
+    [username]
   );
-  return rows[0] || null;
+  const row=rows[0];
+  if(!row||!await verifyPassword(password,row.senha))return null;
+  const {senha,...user}=row;return user;
 }
 
 async function findByUsername(username) {
@@ -50,7 +53,7 @@ async function renameAsAdmin(id, username) {
 async function updatePasswordAndRoleByUsername(username, password) {
   await pool.execute(
     "UPDATE usuarios SET senha = ?, papel = 'admin' WHERE LOWER(username) = LOWER(?)",
-    [password, username]
+    [await hashPassword(password), username]
   );
 }
 
@@ -68,7 +71,7 @@ async function createSession(usuarioId) {
 
   await pool.execute(
     'INSERT INTO sessoes (id, usuario_id, expira_em) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))',
-    [token, usuarioId]
+    [tokenHash(token), usuarioId]
   );
 
   return token;
@@ -80,9 +83,9 @@ async function findBySessionToken(token) {
      FROM sessoes s
      INNER JOIN usuarios u ON u.id = s.usuario_id
      WHERE s.id = ?
-       AND (s.expira_em IS NULL OR s.expira_em > NOW())
+       AND s.expira_em > NOW()
      LIMIT 1`,
-    [token]
+    [tokenHash(token)]
   );
 
   return rows[0] || null;
@@ -93,7 +96,21 @@ async function findAdminBySessionToken(token) {
   return user && user.papel === 'admin' ? user : null;
 }
 
+async function revokeSession(token){
+  if(token)await pool.execute('DELETE FROM sessoes WHERE id=?',[tokenHash(token)]);
+}
+async function migratePasswords(){
+  const [cols]=await pool.query("SELECT CHARACTER_MAXIMUM_LENGTH AS tamanho FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='usuarios' AND COLUMN_NAME='senha'");
+  if(Number(cols[0]?.tamanho||0)<200)await pool.query('ALTER TABLE usuarios MODIFY COLUMN senha VARCHAR(255) NOT NULL');
+  let cursor=0;
+  for(;;){
+    const [rows]=await pool.execute('SELECT id,senha FROM usuarios WHERE id>? ORDER BY id LIMIT 100',[cursor]);
+    if(!rows.length)break;
+    for(const row of rows){cursor=row.id;if(!isHash(row.senha))await pool.execute('UPDATE usuarios SET senha=? WHERE id=? AND BINARY senha=BINARY ?',[await hashPassword(row.senha),row.id,row.senha]);}
+  }
+}
 module.exports = {
+  revokeSession,migratePasswords,
   findDuplicate,
   create,
   findByCredentials,
