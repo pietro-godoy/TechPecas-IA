@@ -39,7 +39,7 @@ async function readPublic(p){
   const ficha=await read(p.id,p.nome);
   try{
     const ref=ficha.find(x=>x.campo==='Referência do fabricante')?.valor;
-    const identity=ref?p.fabricante+'|'+ref:'texto|'+require('crypto').createHash('sha256').update((p.nome||'')+'|'+(p.descricao||'')).digest('hex');
+    const identity=ref?p.fabricante+'|'+ref:'texto2|'+require('crypto').createHash('sha256').update((p.nome||'')+'|'+(p.descricao||'')).digest('hex');
     const [rows]=await pool.execute("SELECT sugestoes FROM produto_ficha_pesquisa WHERE peca_id=? AND identidade=? AND status='publicado'",[p.id,identity]);
     const raw=rows[0]?.sugestoes;
     const published=typeof raw==='string'?JSON.parse(raw):raw;
