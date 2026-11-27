@@ -18,6 +18,7 @@ function closeModal() {
 }
 
 // Mostrar modal com conteúdo customizado
+function modalEscape(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function showModal(title, message, type = 'info', buttons = [], onClose = null) {
   ensureModalOverlay();
   
@@ -29,18 +30,18 @@ function showModal(title, message, type = 'info', buttons = [], onClose = null) 
   
   let html = `
     <div class="modal-header">
-      <h3>${title}</h3>
+      <h3>${modalEscape(title)}</h3>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
-      <p>${message}</p>
+      <p>${modalEscape(message)}</p>
     </div>
   `;
   
   if (buttons.length > 0) {
     html += '<div class="modal-footer">';
     buttons.forEach(btn => {
-      html += `<button class="modal-btn ${btn.class}" onclick="handleModalButton('${btn.action}')">${btn.text}</button>`;
+      html += `<button class="modal-btn ${btn.class}" onclick="handleModalButton('${btn.action}')">${modalEscape(btn.text)}</button>`;
     });
     html += '</div>';
   }
