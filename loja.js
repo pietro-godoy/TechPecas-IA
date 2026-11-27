@@ -123,7 +123,7 @@ function storeCatalogCard(product) {
         '<span>' + tpEscape(product.sku || '') + '</span>' +
       '</div>' +
       '<h2><a style="color:inherit;text-decoration:none" href="produto.html?id=' + Number(product.id) + '">' + tpEscape(product.nome || 'Produto') + '</a></h2>' +
-      '<p class="catalog-maker">' + tpEscape(product.fabricante || 'Fabricante não informado') + '</p>' +
+      '<p class="catalog-maker">' + tpEscape(product.fabricante&&!/^(linha tech peças|demoparts|gen[eé]rico|sem marca)$/i.test(String(product.fabricante).trim())?'Marca: '+product.fabricante:'Marca não informada') + '</p>' +
       '<p class="catalog-description">' + tpEscape(product.descricao || 'Sem descrição cadastrada.') + '</p>' +
       '<div class="catalog-card-bottom">' +
         '<div>' +
