@@ -1,12 +1,9 @@
 const UserModel = require('../models/UserModel');
 
-function bearerToken(req) {
-  const authorization = String(req.headers.authorization || '');
-  return authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
-}
+const {sessionToken}=require('./security');
 
 async function requireUser(req, res, next) {
-  const token = bearerToken(req);
+  const token = sessionToken(req);
 
   if (!token) {
     return res.status(401).json({ ok: false, msg: 'Faça login para continuar.' });
@@ -27,7 +24,7 @@ async function requireUser(req, res, next) {
 }
 
 async function requireAdmin(req, res, next) {
-  const token = bearerToken(req);
+  const token = sessionToken(req);
 
   if (!token) {
     return res.status(401).json({ ok: false, msg: 'Faça login para acessar o painel administrativo.' });
