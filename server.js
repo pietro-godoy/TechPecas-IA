@@ -545,6 +545,7 @@ async function searchExternalProducts({ termo, marca, modelo, ano }) {
     productId: item.product_id ? String(item.product_id) : null,
     pageToken: item.immersive_product_page_token || null,
     title: item.title || 'Produto',
+    brand: typeof item.brand === 'string' ? item.brand.trim().slice(0,100) : null,
     source: item.source || 'Loja externa',
     sourceIcon: item.source_icon || null,
     price: item.price || null,
@@ -925,6 +926,10 @@ async function pesquisarFicha(p,fabricante,referencia){
     return {sugestoes:suggestions,fontes:sources};
 }
 let fichaWorkerBusy=false;
+function marcaRealDoAnuncio(value){
+  const v=String(value||'').trim();
+  return v&&v.length<=100&&!/^(linha tech peças|demoparts|gen[eé]rico|sem marca|n[aã]o (informad[oa]|identificad[oa])|desconhecid[oa])$/i.test(v)?v:null;
+}
 async function atualizarFichasAutomaticamente(){
   if(fichaWorkerBusy||!process.env.SERPAPI_KEY||!process.env.GOOGLE_API_KEY||process.env.FICHA_AUTO_ENABLED==='false')return;
   fichaWorkerBusy=true;
@@ -933,16 +938,24 @@ async function atualizarFichasAutomaticamente(){
     const Technical=require('./src/models/TechnicalSheetModel');
     // Referência explícita cadastrada; SKU interno não é prova de identidade.
     await Technical.ensure();
-    const [rows]=await pool.query(`SELECT p.id,p.nome,p.fabricante,p.descricao,t.valor AS referencia FROM pecas p LEFT JOIN produto_ficha_tecnica t ON t.peca_id=p.id AND t.campo='Referência do fabricante' LEFT JOIN produto_ficha_pesquisa q ON q.peca_id=p.id WHERE p.ativo=1 AND (q.peca_id IS NULL OR q.status='pendente' OR q.identidade<>COALESCE(CONCAT(p.fabricante,'|',t.valor),CONCAT('texto|',SHA2(CONCAT(COALESCE(p.nome,''),'|',COALESCE(p.descricao,'')),256))) OR q.pesquisado_em < NOW()-INTERVAL 7 DAY) ORDER BY COALESCE(q.pesquisado_em,'2000-01-01') LIMIT 2`);
+    const [rows]=await pool.query(`SELECT p.id,p.nome,p.fabricante,p.descricao,t.valor AS referencia FROM pecas p LEFT JOIN produto_ficha_tecnica t ON t.peca_id=p.id AND t.campo='Referência do fabricante' LEFT JOIN produto_ficha_pesquisa q ON q.peca_id=p.id WHERE p.ativo=1 AND (q.peca_id IS NULL OR q.status='pendente' OR q.identidade<>COALESCE(CONCAT(p.fabricante,'|',t.valor),CONCAT('texto2|',SHA2(CONCAT(COALESCE(p.nome,''),'|',COALESCE(p.descricao,'')),256))) OR q.pesquisado_em < NOW()-INTERVAL 7 DAY) ORDER BY COALESCE(q.pesquisado_em,'2000-01-01') LIMIT 2`);
     for(const p of rows){
-      const identidade=p.referencia?p.fabricante+'|'+p.referencia:'texto|'+crypto.createHash('sha256').update((p.nome||'')+'|'+(p.descricao||'')).digest('hex');
+      const identidade=p.referencia?p.fabricante+'|'+p.referencia:'texto2|'+crypto.createHash('sha256').update((p.nome||'')+'|'+(p.descricao||'')).digest('hex');
       if(identidade.length>300)continue;
       try{
         let fabricante=p.fabricante, referencia=p.referencia;
         if(!referencia){
           const titulo=(p.descricao||'').split('Referência externa: ')[1]?.split('. Consulte as especificações')[0]||[p.nome,p.fabricante,p.descricao].filter(Boolean).join(' ').slice(0,1200);
-          const identity=await generateJsonWithGemini('Extraia fabricante e código de peça explicitamente escritos neste título de anúncio. Não deduza, não use modelo de carro, ano ou SKU interno como código. Retorne JSON {fabricante,referencia}, ambos null se incerto. Título: '+JSON.stringify(titulo));
-          fabricante=String(identity?.fabricante||'').trim();referencia=String(identity?.referencia||'').trim();
+          const identity=await generateJsonWithGemini('Extraia separadamente a marca da peça e o código da peça explicitamente escritos neste anúncio. A marca pode existir sem código: retorne fabricante mesmo se referencia for null. Não confunda marca do veículo compatível ou nome de vendedor com marca da peça. Não deduza, não use ano, modelo de carro ou SKU interno como código. Retorne JSON {fabricante,referencia}, null apenas no campo incerto. Título: '+JSON.stringify(titulo));
+          const candidate=marcaRealDoAnuncio(identity?.fabricante);
+          const externalTitle=(p.descricao||'').split('Referência externa: ')[1]?.split('. Consulte as especificações')[0]||'';
+          const brandFromTitle=candidate&&externalTitle.toLowerCase().includes(candidate.toLowerCase())?candidate:null;
+          const known=marcaRealDoAnuncio(p.fabricante);
+          if(!known&&brandFromTitle){
+            await pool.execute("UPDATE pecas SET fabricante=? WHERE id=? AND (fabricante IS NULL OR TRIM(fabricante)='' OR LOWER(fabricante) IN ('linha tech peças','demoparts','genérico','generico','sem marca'))",[brandFromTitle,p.id]);
+          }
+          fabricante=known||brandFromTitle||'';
+          referencia=String(identity?.referencia||'').trim();
           if(!fabricante||!referencia||!titulo.toLowerCase().includes(fabricante.toLowerCase())||!titulo.toLowerCase().includes(referencia.toLowerCase())||!/[0-9]/.test(referencia)||/^\d{4}$/.test(referencia)||referencia.length>120||fabricante.length>120){
             await pool.execute("INSERT INTO produto_ficha_pesquisa (peca_id,identidade,status) VALUES (?,?,'sem_identidade') ON DUPLICATE KEY UPDATE identidade=VALUES(identidade),status=VALUES(status),sugestoes=NULL,pesquisado_em=NOW()",[p.id,identidade]);continue;
           }
@@ -2551,7 +2564,7 @@ async function autoImportExternalDrafts({ termo, marca, modelo, ano, products })
       [
         importedName,
         description,
-        'Linha Tech Peças',
+        marcaRealDoAnuncio(product.brand) || 'Linha Tech Peças',
         category,
         sku,
         suggestedPrice,
