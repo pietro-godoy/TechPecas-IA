@@ -37,7 +37,7 @@ router.get('/:id/ficha-tecnica', async (req,res)=>{
   catch(e){res.status(500).json({ok:false,msg:'Ficha técnica indisponível.'});}
 });
 router.get('/:id/ficha-pesquisa',requireAdmin,async(req,res)=>{
-  try{const p=await CatalogModel.findById(Number(req.params.id));if(!p)return res.status(404).json({ok:false});const ficha=await TechnicalSheet.read(p.id,p.nome);const ref=ficha.find(x=>x.campo==='Referência do fabricante')?.valor; if(!ref)return res.json({ok:true,sugestoes:[]});const [rows]=await pool.execute("SELECT sugestoes FROM produto_ficha_pesquisa WHERE peca_id=? AND identidade=? AND status='pendente'",[p.id,p.fabricante+'|'+ref]);const raw=rows[0]?.sugestoes;res.json({ok:true,sugestoes:typeof raw==='string'?JSON.parse(raw):raw||[]});}catch(e){res.json({ok:true,sugestoes:[]});}
+  try{const p=await CatalogModel.findById(Number(req.params.id));if(!p)return res.status(404).json({ok:false});const ficha=await TechnicalSheet.read(p.id,p.nome);const ref=ficha.find(x=>x.campo==='Referência do fabricante')?.valor; const identity=ref?p.fabricante+'|'+ref:'externo|'+require('crypto').createHash('sha256').update(p.descricao||'').digest('hex');const [rows]=await pool.execute("SELECT sugestoes FROM produto_ficha_pesquisa WHERE peca_id=? AND identidade=? AND status='pendente'",[p.id,identity]);const raw=rows[0]?.sugestoes;res.json({ok:true,sugestoes:typeof raw==='string'?JSON.parse(raw):raw||[]});}catch(e){res.json({ok:true,sugestoes:[]});}
 });
 router.put('/:id/ficha-tecnica',requireAdmin,async(req,res)=>{
   try{const p=await CatalogModel.findById(Number(req.params.id));if(!p)return res.status(404).json({ok:false,msg:'Produto não encontrado.'});res.json({ok:true,ficha:await TechnicalSheet.save(p.id,p.nome,req.body.ficha)});}
