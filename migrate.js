@@ -4,30 +4,19 @@ const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 function buildSslOptions() {
-  const useSsl = String(process.env.DB_SSL || '').trim().toLowerCase() === 'true';
-  if (!useSsl) return undefined;
-
-  const verifyCa = String(process.env.DB_SSL_VERIFY || '').trim().toLowerCase() === 'true';
-
-  if (!verifyCa) {
-    console.log('SSL: REQUIRED (criptografado, sem validação de CA)');
-    return { rejectUnauthorized: false };
+  const production=process.env.NODE_ENV==='production'||Boolean(process.env.RENDER);
+  const remote=!['localhost','127.0.0.1','::1'].includes(process.env.DB_HOST||'127.0.0.1');
+  if(process.env.DB_SSL!=='true'){
+    if(production&&remote)throw new Error('Banco remoto em produção exige DB_SSL=true.');
+    return undefined;
   }
-
-  const configuredPath = String(process.env.DB_CA_PATH || '').trim();
-  const candidate = configuredPath
-    ? path.resolve(__dirname, configuredPath)
-    : path.join(__dirname, 'ca.pem');
-
-  if (!fs.existsSync(candidate)) {
-    throw new Error('DB_SSL_VERIFY=true, mas o certificado CA não foi encontrado.');
-  }
-
-  console.log('SSL: VERIFY_CA usando:', candidate);
-  return {
-    ca: fs.readFileSync(candidate),
-    rejectUnauthorized: true
-  };
+  const verify=String(process.env.DB_SSL_VERIFY||'true').toLowerCase()!=='false';
+  if(!verify&&production)throw new Error('Produção exige DB_SSL_VERIFY=true.');
+  if(!verify)return {rejectUnauthorized:false};
+  const caPath=process.env.DB_CA_PATH?path.resolve(__dirname,process.env.DB_CA_PATH):path.join(__dirname,'ca.pem');
+  const ca=process.env.DB_CA_PEM?process.env.DB_CA_PEM.replace(/\\n/g,'\n'):fs.existsSync(caPath)?fs.readFileSync(caPath):undefined;
+  if(process.env.DB_CA_PATH&&!ca)throw new Error('Certificado CA configurado não foi encontrado.');
+  return {rejectUnauthorized:true,...(ca?{ca}:{})};
 }
 
 async function main() {
