@@ -6,8 +6,9 @@ const API_BASE_URL = window.API_CONFIG?.API_BASE_URL ||
 const USER_KEY = "techpecas_user";
 
 function getCurrentUser() {
-  const raw = localStorage.getItem(USER_KEY);
-  return raw ? JSON.parse(raw) : null;
+  try{const raw=localStorage.getItem(USER_KEY);const user=raw?JSON.parse(raw):null;
+  if(user&&user.token!=='cookie'){localStorage.removeItem(USER_KEY);return null;}
+  return user;}catch(e){localStorage.removeItem(USER_KEY);return null;}
 }
 
 function setCurrentUser(userData) {
@@ -17,29 +18,32 @@ function setCurrentUser(userData) {
     username: userData.username,
     email: userData.email || '',
     papel: userData.papel || 'cliente',
-    token: userData.token || null
+    token: 'cookie'
   }));
 }
 
-function logoutCurrentUser() {
-  localStorage.removeItem(USER_KEY);
+async function logoutCurrentUser(){
+  try{await fetch(API_BASE_URL+'/auth/logout',{method:'POST',credentials:'include',keepalive:true});}
+  finally{localStorage.removeItem(USER_KEY);}
 }
 
 async function apiCall(endpoint, options = {}) {
   const user = getCurrentUser();
   const headers = {
     'Content-Type': 'application/json',
-    ...(user?.token ? { Authorization: 'Bearer ' + user.token } : {}),
+
     ...options.headers
   };
 
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
+      credentials:'include',
       headers
     });
 
     const data = await response.json();
+    if(response.status===401&&endpoint!=='/auth/login')localStorage.removeItem(USER_KEY);
     return data;
   } catch (error) {
     if (error?.name === 'AbortError') {
@@ -56,8 +60,8 @@ async function registerUser(username, password, email = '') {
   if (!username || username.trim().length < 3) {
     return { ok: false, msg: 'Usuário deve ter no mínimo 3 caracteres' };
   }
-  if (!password || password.length < 6) {
-    return { ok: false, msg: 'Senha deve ter no mínimo 6 caracteres' };
+  if (!password || password.length < 8) {
+    return { ok: false, msg: 'Senha deve ter no mínimo 8 caracteres' };
   }
 
   const result = await apiCall('/auth/register', {
@@ -79,7 +83,7 @@ async function syncCurrentUserRole() {
   const result = await apiCall('/auth/me', { method: 'GET' });
 
   if (!result.ok || !result.usuario) {
-    return current;
+    return getCurrentUser();
   }
 
   setCurrentUser({
@@ -112,10 +116,9 @@ async function getSearchHistory() {
   if (!user) return [];
 
   const url = `${API_BASE_URL}/historico?usuarioId=${user.id}`;
-  console.log('Fetching history from:', url);
+
   const result = await apiCall(`/historico?usuarioId=${user.id}`, { method: 'GET' });
-  
-  console.log('History result:', result);
+
   if (!result.ok) return [];
   
   return result.historico || [];
@@ -200,14 +203,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (currentUsername) {
       // Usuário logado - mostrar nome e botão de sair
       navAuth.innerHTML = `
-        <span class="nav-user">${currentUsername}</span>
+        <span class="nav-user">${tpEscape(currentUsername)}</span>
         <button id="navLogout" class="nav-logout">Sair</button>
       `;
       
       const navLogout = document.getElementById("navLogout");
       if (navLogout) {
-        navLogout.addEventListener("click", () => {
-          logoutCurrentUser();
+        navLogout.addEventListener("click", async () => {
+          await logoutCurrentUser();
           showSuccess("Você saiu da conta com sucesso!", "Até logo!", () => {
             window.location.href = "index.html";
           });
@@ -418,7 +421,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     const buscas = await getSearchHistory();
-    console.log('Retrieved searches:', buscas);
+
     if (buscas.length === 0) {
       historyList.innerHTML = '<li style="background:transparent;color:#999;text-align:center;padding:1rem;font-style:italic;">Nenhuma busca ainda.</li>';
       if (clearHistoryBtn) clearHistoryBtn.style.display = 'none';
@@ -428,7 +431,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     buscas.forEach((item) => {
       const d = new Date(item.data_busca);
       const li = document.createElement("li");
-      li.innerHTML = `<span>${item.termo}</span><span style="font-size:0.8rem;opacity:0.85">${d.toLocaleString()}</span>`;
+      li.innerHTML = `<span>${tpEscape(item.termo)}</span><span style="font-size:0.8rem;opacity:0.85">${d.toLocaleString()}</span>`;
       li.addEventListener("click", () => {
         modeloInput.value = item.termo;
       });
@@ -443,10 +446,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (userArea) {
     if (currentUsername) {
-      userArea.innerHTML = `<div class="user-pill"><span>${currentUsername}</span><button id="btnLogout2" type="button">Sair</button></div>`;
+      userArea.innerHTML = `<div class="user-pill"><span>${tpEscape(currentUsername)}</span><button id="btnLogout2" type="button">Sair</button></div>`;
       const btnLogout2 = document.getElementById("btnLogout2");
-      btnLogout2.addEventListener("click", () => {
-        logoutCurrentUser();
+      btnLogout2.addEventListener("click", async () => {
+        await logoutCurrentUser();
         showSuccess("Você saiu da conta com sucesso!", "Logout", () => {
           window.location.href = "index.html";
         });
@@ -567,7 +570,7 @@ function exibirPecas(pecas, carroNome) {
 
   let html = `
     <div style="margin-bottom: 30px;">
-      <h2 style="margin: 0 0 5px 0; font-size: 28px; color: #333;">Peças para ${carroNome}</h2>
+      <h2 style="margin: 0 0 5px 0; font-size: 28px; color: #333;">Peças para ${tpEscape(carroNome)}</h2>
       <p style="color: #999; margin: 0; font-size: 14px;">Principais peças de manutenção recomendadas</p>
     </div>
     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px;">
@@ -602,7 +605,7 @@ function exibirPecas(pecas, carroNome) {
             ">#${index + 1}</span>
             <span style="font-size: 12px; opacity: 0.9;">Peça essencial</span>
           </div>
-          <h3 style="margin: 0; font-size: 18px; font-weight: 700;">${peca.nome}</h3>
+          <h3 style="margin: 0; font-size: 18px; font-weight: 700;">${tpEscape(peca.nome)}</h3>
         </div>
         
         <div style="padding: 16px; flex-grow: 1; display: flex; flex-direction: column;">
@@ -611,7 +614,7 @@ function exibirPecas(pecas, carroNome) {
             color: #666;
             font-size: 13px;
             line-height: 1.5;
-          ">${peca.descricao}</p>
+          ">${tpEscape(peca.descricao)}</p>
           
           <div style="margin-top: auto; display: flex; justify-content: space-between; align-items: center;">
             <div>
@@ -627,7 +630,7 @@ function exibirPecas(pecas, carroNome) {
               ">R$ ${peca.preco_medio?.toFixed(2) || '0.00'}</span>
             </div>
             <button 
-              onclick="adicionarAoCarrinho(${peca.id}, '${peca.nome}')" 
+              onclick="adicionarAoCarrinho(${Number(peca.id)}, 'Produto')" 
               style="
                 padding: 10px 16px;
                 background: linear-gradient(135deg, var(--vermelho) 0%, #d63031 100%);
@@ -1408,8 +1411,8 @@ document.addEventListener('DOMContentLoaded', function() {
     garageUserArea.innerHTML =
       '<div class="user-pill"><span>' + tpEscape(user.username) + '</span>' +
       '<button id="garageLogout" type="button">Sair</button></div>';
-    document.getElementById('garageLogout')?.addEventListener('click', function() {
-      logoutCurrentUser();
+    document.getElementById('garageLogout')?.addEventListener('click', async function() {
+      await logoutCurrentUser();
       window.location.href = 'index.html';
     });
   }
