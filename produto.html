@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Catálogo de peças do Tech Peças.">
+  <title>Produto | Tech Peças</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <meta name="theme-color" content="#0a0b0d">
+  <link rel="stylesheet" href="style.css">
+  <script src="modal.js"></script>
+<style>
+.pd-card{background:white;border:1px solid #ddd;border-radius:18px;padding:clamp(18px,4vw,36px);margin:18px 0;color:#171717}.pd-grid{display:grid;grid-template-columns:1fr 1fr;gap:32px}.pd-media{background:#f5f4f1;border-radius:12px;min-height:300px;display:grid;place-items:center;overflow:hidden}.pd-media img{width:100%;height:360px;object-fit:contain}.pd-price{font-size:36px;font-weight:800;margin:20px 0 8px}.pd-actions{display:grid;gap:12px;margin-top:20px}.pd-spec{width:100%;border-collapse:collapse}.pd-spec th,.pd-spec td{text-align:left;padding:13px;border-bottom:1px solid #eee;overflow-wrap:anywhere}.pd-spec th{width:35%;background:#f6f6f6}.pd-stars{font-size:28px;color:#999}.pd-card h2{margin-bottom:16px}.pd-card p{line-height:1.6}.pd-note{color:#666;font-size:14px}@media(max-width:700px){.pd-grid{grid-template-columns:1fr}.pd-media img{height:250px}}
+</style></head>
+<body class="app-body">
+  <header class="site-header app-header">
+    <a class="brand" href="index.html"><span class="brand-mark">TP</span><span class="brand-name">Tech Peças</span></a>
+    <nav class="site-nav">
+      <a href="index.html">Início</a>
+      <a href="catalogo.html" class="active">Catálogo</a>
+      <a href="buscar.html">Buscar peças</a>
+      <a href="garagem.html">Minha garagem</a>
+      <a href="pedidos.html">Pedidos</a>
+      <a href="carrinho.html" class="cart-nav-link">Carrinho <span id="cartCount" class="cart-count">0</span></a>
+      <div id="navAuth" class="nav-auth"><a href="login.html" id="nav-login" class="nav-login-link">Entrar</a></div>
+    </nav>
+  </header>
+
+  <main class="store-page"><p><a href="catalogo.html">← Voltar ao catálogo</a></p><section id="productDetail" aria-live="polite">Carregando produto...</section></main>
+
+  <script src="script.js"></script>
+  <script src="loja.js"></script>
+<script src="produto.js"></script></body>
+</html>
